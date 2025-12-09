@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect } from 'react';
 import { X, Trash2, Pen } from 'lucide-react';
 import { Button } from './Button';
@@ -19,28 +20,48 @@ export const DrawingModal: React.FC<DrawingModalProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [ctx, setCtx] = useState<CanvasRenderingContext2D | null>(null);
 
+  // Initialize Canvas
   useEffect(() => {
-    if (isOpen && canvasRef.current) {
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-      
-      // Set canvas size to match display size
-      const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width;
-      canvas.height = rect.height;
+    if (isOpen) {
+      // Small delay to ensure modal animation is finished and DOM is stable
+      // This fixes the offset issue on first open
+      const timer = setTimeout(() => {
+        initializeCanvas();
+      }, 50);
 
-      if (context) {
-        context.lineCap = 'round';
-        context.lineJoin = 'round';
-        context.strokeStyle = 'black';
-        context.lineWidth = 3;
-        // White background for better AI recognition
-        context.fillStyle = 'white';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        setCtx(context);
-      }
+      window.addEventListener('resize', initializeCanvas);
+
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('resize', initializeCanvas);
+      };
     }
   }, [isOpen]);
+
+  const initializeCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    
+    // Only update if dimensions have changed to prevent clearing content unnecessarily on mobile scroll
+    if (canvas.width !== rect.width || canvas.height !== rect.height) {
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+
+        const context = canvas.getContext('2d');
+        if (context) {
+            context.lineCap = 'round';
+            context.lineJoin = 'round';
+            context.strokeStyle = 'black';
+            context.lineWidth = 3;
+            // White background for better AI recognition
+            context.fillStyle = 'white';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            setCtx(context);
+        }
+    }
+  };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
     if (!ctx) return;
@@ -52,6 +73,7 @@ export const DrawingModal: React.FC<DrawingModalProps> = ({
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
     if (!isDrawing || !ctx) return;
+    e.preventDefault(); // Prevent scrolling on touch devices while drawing
     const { x, y } = getCoordinates(e);
     ctx.lineTo(x, y);
     ctx.stroke();
@@ -78,9 +100,13 @@ export const DrawingModal: React.FC<DrawingModalProps> = ({
       clientY = (e as React.MouseEvent).clientY;
     }
 
+    // Calculate scaling factor (in case CSS size differs from internal size)
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
     return {
-      x: clientX - rect.left,
-      y: clientY - rect.top
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
     };
   };
 
