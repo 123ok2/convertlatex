@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { Button } from './components/Button';
@@ -43,6 +44,8 @@ import {
   FileText,
   RefreshCw,
   Mic,
+  X,
+  ChevronDown
 } from 'lucide-react';
 
 export default function App() {
@@ -69,6 +72,10 @@ export default function App() {
   const [isAiProcessing, setIsAiProcessing] = useState<boolean>(false);
   const [isDeducting, setIsDeducting] = useState(false);
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  
+  // Alert State
+  const [showCreditAlert, setShowCreditAlert] = useState(false);
   
   // Voice & Stats State
   const [isListening, setIsListening] = useState(false);
@@ -95,7 +102,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Keyboard Shortcuts
+  // Keyboard Shortcuts & Copy Protection
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
         // Ctrl + Enter to Preview
@@ -103,9 +110,26 @@ export default function App() {
             handleManualPreview();
         }
     };
+
+    const handleCopyCut = (e: ClipboardEvent) => {
+      if (user && credits !== null && credits <= 0) {
+        e.preventDefault();
+        setShowCreditAlert(true);
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [content]); // Depend on content so it previews the latest
+    if (user) {
+      document.addEventListener('copy', handleCopyCut);
+      document.addEventListener('cut', handleCopyCut);
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('copy', handleCopyCut);
+      document.removeEventListener('cut', handleCopyCut);
+    };
+  }, [content, user, credits]); // Depend on content/credits
 
   // Update stats whenever content changes
   useEffect(() => {
@@ -199,9 +223,11 @@ export default function App() {
 
   const deductCredit = async (): Promise<boolean> => {
     if (!user || credits === null) return false;
+    
+    // Allow process to continue even if credits are 0, but don't deduct
     if (credits <= 0) {
       setAccessStatus('denied');
-      return false;
+      return false; 
     }
 
     setIsDeducting(true);
@@ -272,6 +298,7 @@ export default function App() {
       setCredits(null);
       setConfigError(null);
       setIsRegistering(false);
+      setShowProfileMenu(false);
     }
   };
 
@@ -294,13 +321,23 @@ service cloud.firestore {
     }, 2000);
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (credits !== null && credits <= 0) {
+      e.preventDefault();
+      setShowCreditAlert(true);
+    }
+  };
+
   // --- APP LOGIC ---
 
   const handleAIEnhance = useCallback(async () => {
     if (!content.trim()) return;
     
-    const canProceed = await deductCredit();
-    if (!canProceed) return;
+    // Allow processing even if credits are 0, but only deduct if > 0
+    if (credits !== null && credits > 0) {
+       await deductCredit();
+    }
+    // If credits are 0 or less, we simply proceed without deduction (Freemium mode: View but don't export)
 
     setIsAiProcessing(true);
     try {
@@ -334,8 +371,10 @@ service cloud.firestore {
   }, [content, user, credits]);
 
   const handleDrawingSubmit = useCallback(async (imageData: string) => {
-    const canProceed = await deductCredit();
-    if (!canProceed) return;
+    // Allow drawing processing even if credits are 0, but only deduct if > 0
+    if (credits !== null && credits > 0) {
+        await deductCredit();
+    }
 
     setIsAiProcessing(true);
     try {
@@ -425,6 +464,11 @@ service cloud.firestore {
   }, [content]);
 
   const handlePrint = useCallback(() => {
+    if (credits !== null && credits <= 0) {
+        setShowCreditAlert(true);
+        return;
+    }
+
     if (!previewContent) {
         alert("Vui lòng nhấn 'Cập nhật Xem trước' hoặc 'Tối ưu hóa' để tạo bản xem trước trước khi in.");
         return;
@@ -433,9 +477,14 @@ service cloud.firestore {
     setTimeout(() => {
         window.print();
     }, 500);
-  }, [previewContent]);
+  }, [previewContent, credits]);
 
   const handleExportWord = useCallback(() => {
+    if (credits !== null && credits <= 0) {
+        setShowCreditAlert(true);
+        return;
+    }
+
     const previewEl = document.getElementById('markdown-preview-content');
     if (!previewEl) {
         alert("Vui lòng nhấn 'Cập nhật Xem trước' hoặc 'Tối ưu hóa' trước khi xuất file.");
@@ -477,9 +526,14 @@ service cloud.firestore {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, []);
+  }, [credits]);
 
   const handleCopyFormatted = useCallback(async () => {
+    if (credits !== null && credits <= 0) {
+        setShowCreditAlert(true);
+        return;
+    }
+
     const previewEl = document.getElementById('markdown-preview-content');
     if (!previewEl) {
         alert("Vui lòng nhấn 'Xem trước' trước khi copy.");
@@ -494,7 +548,7 @@ service cloud.firestore {
       console.error('Copy failed: ', err);
       alert('Lỗi sao chép.');
     }
-  }, []);
+  }, [credits]);
 
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -629,26 +683,6 @@ service cloud.firestore {
     );
   }
 
-  // Blocked Screen
-  if (accessStatus === 'denied') {
-    return (
-      <div className="h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border-t-4 border-red-500">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <AlertTriangle className="w-8 h-8 text-red-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Hết lượt sử dụng</h2>
-          <p className="text-slate-600 mb-6">Tài khoản đã hết Credits. Vui lòng liên hệ Admin để nạp thêm.</p>
-          <div className="bg-slate-50 p-4 rounded-lg mb-6 text-left">
-            <div className="flex items-center gap-2 mb-2"><UserCheck className="w-5 h-5 text-indigo-600" /><span className="font-medium">Admin: Duy Hạnh</span></div>
-            <div className="flex items-center gap-2"><Phone className="w-5 h-5 text-indigo-600" /><span className="font-medium">0868 640 898</span></div>
-          </div>
-          <Button onClick={handleLogout} variant="secondary">Đăng xuất</Button>
-        </div>
-      </div>
-    );
-  }
-
   // MAIN APP INTERFACE
   return (
     <div className={`flex flex-col h-screen bg-white text-slate-900 font-sans ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
@@ -661,20 +695,105 @@ service cloud.firestore {
           <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-700 to-indigo-500 bg-clip-text text-transparent hidden sm:block">LLM Viewer</h1>
         </div>
         <div className="flex items-center gap-4">
-           <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-full text-sm font-medium">
-             {isDeducting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 fill-yellow-500 text-yellow-600" />}
+           <div className={`flex items-center gap-2 px-3 py-1.5 border rounded-full text-sm font-medium ${credits && credits > 0 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+             {isDeducting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className={`w-4 h-4 ${credits && credits > 0 ? 'fill-yellow-500 text-yellow-600' : 'fill-red-500 text-red-600'}`} />}
              <span>{credits ?? '...'} Credits</span>
            </div>
+           
            <div className="h-8 w-px bg-slate-200 mx-2 hidden sm:block"></div>
-           <div className="flex items-center gap-3">
-             {user?.photoURL ? (
-               <img src={user.photoURL} alt="Avatar" className="w-9 h-9 rounded-full border border-slate-200 shadow-sm" />
-             ) : (
-               <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border border-indigo-200">
-                 {user?.email?.[0].toUpperCase()}
+           
+           {/* USER PROFILE DROPDOWN */}
+           <div className="relative">
+             <button 
+               onClick={() => setShowProfileMenu(!showProfileMenu)}
+               className="flex items-center gap-2 focus:outline-none group p-1 rounded-full hover:bg-slate-100 transition-colors"
+               title="Thông tin tài khoản"
+             >
+               {user?.photoURL ? (
+                 <img src={user.photoURL} alt="Avatar" className="w-9 h-9 rounded-full border border-slate-200 shadow-sm" />
+               ) : (
+                 <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border border-indigo-200">
+                   {user?.email?.[0].toUpperCase()}
+                 </div>
+               )}
+               <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
+             </button>
+
+             {/* BACKDROP FOR CLOSING */}
+             {showProfileMenu && (
+                <div 
+                  className="fixed inset-0 z-40 cursor-default" 
+                  onClick={() => setShowProfileMenu(false)}
+                ></div>
+             )}
+
+             {/* DROPDOWN MENU */}
+             {showProfileMenu && (
+               <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right z-50">
+                  <div className="p-5 bg-gradient-to-br from-indigo-50 to-white border-b border-indigo-50">
+                    <div className="flex items-center gap-3 mb-3">
+                       {user?.photoURL ? (
+                         <img src={user.photoURL} alt="Avatar" className="w-12 h-12 rounded-full border-2 border-white shadow-md" />
+                       ) : (
+                         <div className="w-12 h-12 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xl font-bold shadow-md">
+                           {user?.email?.[0].toUpperCase()}
+                         </div>
+                       )}
+                       <div className="flex-1 overflow-hidden">
+                          <p className="font-bold text-slate-900 truncate text-lg">{user?.displayName || 'Người dùng'}</p>
+                          <div className="flex items-center gap-1 text-xs text-slate-500 bg-white/50 inline-flex px-2 py-0.5 rounded-full border border-indigo-100 mt-1">
+                             <span className="font-semibold text-indigo-600">ID:</span> 
+                             <span className="truncate max-w-[100px]">{user?.uid}</span>
+                          </div>
+                       </div>
+                    </div>
+                  </div>
+                  
+                  <div className="p-4 space-y-4">
+                    <div className="group relative">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1">
+                        <Mail className="w-3 h-3" /> Email đăng nhập
+                      </label>
+                      <div className="text-sm text-slate-700 font-medium bg-slate-50 p-2 rounded border border-slate-100 break-all select-all">
+                        {user?.email}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1">
+                        <KeyRound className="w-3 h-3" /> Mật khẩu
+                      </label>
+                      <div className="text-sm text-slate-700 font-medium font-mono bg-slate-50 p-2 rounded border border-slate-100 flex justify-between items-center group hover:border-indigo-200 transition-colors">
+                        <span>{password || '••••••••'}</span>
+                        {!password && <span className="text-[10px] text-slate-400 italic px-2">Đã ẩn (Tải lại trang)</span>}
+                      </div>
+                      {!password && (
+                        <p className="text-[10px] text-slate-400 mt-1.5 leading-tight">
+                          * Mật khẩu chỉ hiển thị ngay sau khi đăng nhập. Nếu tải lại trang, nó sẽ bị ẩn để bảo mật.
+                        </p>
+                      )}
+                    </div>
+
+                     <div>
+                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1">
+                        <Zap className="w-3 h-3" /> Số dư Credits
+                       </label>
+                       <div className={`text-sm font-bold p-2 rounded border ${credits && credits > 0 ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
+                         {credits ?? 0} lượt sử dụng
+                       </div>
+                    </div>
+                  </div>
+                  
+                  <div className="p-3 border-t border-slate-100 bg-slate-50/50">
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-transparent hover:border-red-100"
+                    >
+                      <LogOut className="w-4 h-4" /> Đăng xuất tài khoản
+                    </button>
+                  </div>
                </div>
              )}
-             <Button variant="ghost" onClick={handleLogout} className="text-slate-500 hover:text-red-600" title="Đăng xuất"><LogOut className="w-5 h-5" /></Button>
            </div>
         </div>
       </header>
@@ -702,7 +821,10 @@ service cloud.firestore {
 
           <div className="flex-1 flex overflow-hidden">
             {/* Editor Pane */}
-            <div className={`${activeTab === 'editor' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-1/2 border-r border-slate-200 bg-slate-50 relative group`}>
+            <div 
+              className={`${activeTab === 'editor' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-1/2 border-r border-slate-200 bg-slate-50 relative group`}
+              onContextMenu={handleContextMenu}
+            >
               <textarea
                 ref={textareaRef}
                 value={content}
@@ -721,9 +843,12 @@ service cloud.firestore {
             </div>
 
             {/* Preview Pane */}
-            <div className={`${activeTab === 'preview' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-1/2 bg-white overflow-hidden relative`}>
+            <div 
+              className={`${activeTab === 'preview' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-1/2 bg-white overflow-hidden relative`}
+              onContextMenu={handleContextMenu}
+            >
               {previewContent ? (
-                  <div className="flex-1 overflow-y-auto p-8 custom-scrollbar" id="markdown-preview-scroll">
+                  <div className={`flex-1 overflow-y-auto p-8 custom-scrollbar ${credits !== null && credits <= 0 ? 'select-none' : ''}`} id="markdown-preview-scroll">
                      <div className="max-w-3xl mx-auto">
                         <MarkdownPreview content={previewContent} />
                      </div>
@@ -763,6 +888,44 @@ service cloud.firestore {
         onSubmit={handleDrawingSubmit}
         isProcessing={isAiProcessing}
       />
+
+      {/* CREDIT ALERT POPUP */}
+      {showCreditAlert && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white max-w-sm w-full rounded-2xl shadow-2xl overflow-hidden relative border border-red-100">
+             <button 
+                onClick={() => setShowCreditAlert(false)} 
+                className="absolute top-2 right-2 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+             >
+               <X className="w-5 h-5" />
+             </button>
+             
+             <div className="p-6 text-center">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <AlertTriangle className="w-8 h-8 text-red-600" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Hết lượt sử dụng</h3>
+                <p className="text-slate-600 mb-6 text-sm leading-relaxed">
+                  Tài khoản của bạn đã hết Credits. Bạn vẫn có thể sử dụng các tính năng chỉnh sửa, nhưng <b>không thể Sao chép hoặc Xuất file</b>.
+                </p>
+                <div className="bg-slate-50 p-4 rounded-lg mb-6 text-left border border-slate-200">
+                  <div className="text-xs font-semibold text-slate-500 uppercase mb-2 tracking-wider">Liên hệ nạp thêm</div>
+                  <div className="flex items-center gap-2 mb-2 text-sm text-slate-800">
+                    <UserCheck className="w-4 h-4 text-indigo-600" />
+                    <span>Admin: Duy Hạnh</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-slate-800">
+                    <Phone className="w-4 h-4 text-indigo-600" />
+                    <span>0868 640 898</span>
+                  </div>
+                </div>
+                <Button onClick={() => setShowCreditAlert(false)} variant="primary" className="w-full justify-center">
+                  Đã hiểu
+                </Button>
+             </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
