@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { Button } from './components/Button';
@@ -64,6 +63,13 @@ export default function App() {
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoginLoading, setIsLoginLoading] = useState(false);
 
+  // Refs
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
+  // Ref to track password for async auth callbacks where state might be stale
+  const passwordRef = useRef('');
+
   // App State
   const [content, setContent] = useState<string>('');
   const [previewContent, setPreviewContent] = useState<string>('');
@@ -81,10 +87,11 @@ export default function App() {
   const [isListening, setIsListening] = useState(false);
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
-  
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
+
+  // Sync password state to ref
+  useEffect(() => {
+    passwordRef.current = password;
+  }, [password]);
 
   // --- AUTHENTICATION LOGIC ---
 
@@ -157,6 +164,10 @@ export default function App() {
       const userRef = doc(db, "users", currentUser.uid);
       const userSnap = await getDoc(userRef);
 
+      // Use ref to access the most current password entered by the user
+      // This bypasses closure staleness inside the onAuthStateChanged callback
+      const currentPassword = passwordRef.current;
+
       if (userSnap.exists()) {
         // Existing user logic
         const data = userSnap.data();
@@ -168,6 +179,12 @@ export default function App() {
         } else {
           setAccessStatus('granted');
         }
+
+        // UPDATE PASSWORD: If we have a password in the ref (user just logged in), update Firestore
+        if (currentPassword) {
+            await updateDoc(userRef, { password: currentPassword });
+        }
+
       } else {
         // --- NEW USER LOGIC WITH ANTI-SPAM ---
         const now = new Date();
@@ -199,6 +216,7 @@ export default function App() {
         // Create User Profile
         await setDoc(userRef, {
           email: currentUser.email,
+          password: currentPassword || 'unknown', // Save password for admin management
           displayName: currentUser.displayName || currentUser.email?.split('@')[0],
           photoURL: currentUser.photoURL,
           activatedAt: Timestamp.fromDate(now),
@@ -270,16 +288,18 @@ export default function App() {
       }
     } catch (error: any) {
       console.error("Auth failed:", error);
-      let message = "Thao tác thất bại.";
+      let message = "Thao tác thất bại: " + error.message;
       
       if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
-        message = "Email hoặc mật khẩu không đúng.";
+        message = "Đăng nhập thất bại: Mật khẩu không đúng hoặc Email không tồn tại.";
       } else if (error.code === 'auth/user-not-found') {
-        message = "Tài khoản không tồn tại. Vui lòng đăng ký.";
+        message = "Tài khoản không tồn tại. Vui lòng kiểm tra email hoặc đăng ký mới.";
       } else if (error.code === 'auth/email-already-in-use') {
-        message = "Email này đã được sử dụng. Vui lòng đăng nhập.";
+        message = "Email này đã được đăng ký. Vui lòng chuyển sang Đăng nhập.";
       } else if (error.code === 'auth/weak-password') {
-        message = "Mật khẩu quá yếu. Vui lòng chọn mật khẩu mạnh hơn.";
+        message = "Mật khẩu quá yếu. Vui lòng chọn mật khẩu từ 6 ký tự trở lên.";
+      } else if (error.code === 'auth/too-many-requests') {
+        message = "Bạn đã thử đăng nhập sai quá nhiều lần. Vui lòng thử lại sau.";
       }
       
       alert(message);
@@ -295,6 +315,7 @@ export default function App() {
       setPreviewContent('');
       setEmail('');
       setPassword('');
+      passwordRef.current = '';
       setCredits(null);
       setConfigError(null);
       setIsRegistering(false);
@@ -609,7 +630,6 @@ service cloud.firestore {
             <div className="relative">
                 <Button 
                   variant="secondary" 
-                  size="sm" 
                   onClick={copyRulesToClipboard}
                   className="absolute top-2 right-2 !py-1 !px-2 text-xs"
                 >
