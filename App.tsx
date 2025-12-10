@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { Button } from './components/Button';
@@ -407,13 +408,19 @@ service cloud.firestore {
             contents: {
                 parts: [
                     { inlineData: { data: base64Data, mimeType: 'image/png' } },
-                    { text: "Convert this handwritten mathematical expression or text into a LaTeX block wrapped in $$ $$. Return ONLY the LaTeX code, nothing else." }
+                    { text: "Convert this handwritten mathematical expression or text into LaTeX. Return the raw LaTeX code. Do NOT wrap in markdown code blocks." }
                 ]
             }
         });
 
         if (response.text) {
-            insertTextAtCursor('\n' + response.text + '\n');
+            let cleanLatex = response.text.trim();
+            // 1. Remove Markdown code blocks only (```latex ... ``` or ``` ... ```)
+            // Chỉ xóa bỏ phần bọc code block của markdown, KHÔNG xóa delimiters $$ hay thêm vào.
+            cleanLatex = cleanLatex.replace(/^```[a-zA-Z]*\s*/i, '').replace(/\s*```$/, '').trim();
+            
+            // Insert directly without extra wrapping
+            insertTextAtCursor(cleanLatex);
             setIsDrawingModalOpen(false);
         }
     } catch (error) {
