@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="vi">
   <head>
@@ -7,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+    <!-- Load MathLive for MathType editing -->
+    <script defer src="https://unpkg.com/mathlive"></script>
     <style>
       body {
         font-family: 'Inter', sans-serif;
@@ -31,6 +34,25 @@
         overflow-x: auto;
         overflow-y: hidden;
         padding: 0.5rem 0;
+      }
+
+      /* MathLive Customization */
+      math-field {
+        width: 100%;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        font-size: 24px;
+        background: white;
+        box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      }
+      math-field:focus-within {
+        outline: none;
+        border-color: #4f46e5;
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+      }
+      math-field::part(menu-toggle) {
+        display: none;
       }
 
       /* Print Styles for PDF Export */

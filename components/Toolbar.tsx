@@ -1,7 +1,8 @@
+
 import React from 'react';
 import { 
   Bold, Italic, Heading, List, Code, Sigma, 
-  Mic, MicOff, PenTool, Upload, 
+  Mic, MicOff, Calculator, Upload, 
   Eye, Sparkles, Loader2, Copy, Printer, Download, Trash2
 } from 'lucide-react';
 import { Button } from './Button';
@@ -79,7 +80,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           icon={isListening ? <MicOff className="w-4 h-4 animate-pulse text-red-500" /> : <Mic className="w-4 h-4" />} 
           title={isListening ? "Dừng ghi âm" : "Nhập bằng giọng nói"} 
         />
-        <IconButton onClick={onOpenDrawing} icon={<PenTool className="w-4 h-4" />} title="Vẽ công thức (-1 Credit)" />
+        <IconButton onClick={onOpenDrawing} icon={<Calculator className="w-4 h-4" />} title="Công thức (Vẽ tay / Bàn phím MathType)" />
         
         <div className="relative">
           <input 

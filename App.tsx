@@ -146,7 +146,9 @@ export default function App() {
     setCharCount(content.length);
   }, [content]);
 
-  // Helper to get IP
+  // --- ANTI-ABUSE SYSTEM ---
+
+  // 1. Get IP
   const getPublicIP = async (): Promise<string | null> => {
     try {
         const response = await fetch('https://api.ipify.org?format=json');
@@ -158,71 +160,136 @@ export default function App() {
     }
   };
 
+  // 2. Generate Device Fingerprint (Canvas + Audio + Navigator)
+  const generateDeviceFingerprint = async (): Promise<string> => {
+    try {
+        const parts: string[] = [];
+        
+        // Basic Nav
+        parts.push(navigator.userAgent);
+        parts.push(navigator.language);
+        parts.push(new Date().getTimezoneOffset().toString());
+        parts.push(window.screen.width + 'x' + window.screen.height);
+        
+        // Canvas Fingerprinting
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            canvas.width = 200;
+            canvas.height = 50;
+            ctx.textBaseline = "top";
+            ctx.font = "14px 'Arial'";
+            ctx.textBaseline = "alphabetic";
+            ctx.fillStyle = "#f60";
+            ctx.fillRect(125,1,62,20);
+            ctx.fillStyle = "#069";
+            ctx.fillText("LLM_Viewer_Auth_FP", 2, 15);
+            ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
+            ctx.fillText("User_Validation", 4, 17);
+            parts.push(canvas.toDataURL());
+        }
+
+        // Simple Hash Function (DJB2 variant)
+        const str = parts.join("###");
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32bit integer
+        }
+        return Math.abs(hash).toString(16);
+    } catch (e) {
+        return "unknown_device_" + Math.random().toString(36);
+    }
+  };
+
   const checkUserSubscription = async (currentUser: User) => {
     setAccessStatus('checking');
     setConfigError(null);
     try {
       const userRef = doc(db, "users", currentUser.uid);
       const userSnap = await getDoc(userRef);
-
-      // Use ref to access the most current password entered by the user
-      // This bypasses closure staleness inside the onAuthStateChanged callback
       const currentPassword = passwordRef.current;
 
       if (userSnap.exists()) {
-        // Existing user logic
+        // --- EXISTING USER ---
         const data = userSnap.data();
         const currentCredits = typeof data.credits === 'number' ? data.credits : 0;
         setCredits(currentCredits);
+        setAccessStatus(currentCredits > 0 ? 'granted' : 'denied');
 
-        if (currentCredits <= 0) {
-          setAccessStatus('denied');
-        } else {
-          setAccessStatus('granted');
-        }
-
-        // UPDATE PASSWORD: If we have a password in the ref (user just logged in), update Firestore
         if (currentPassword) {
             await updateDoc(userRef, { password: currentPassword });
         }
 
+        // Mark this device as registered in LocalStorage just in case
+        localStorage.setItem('llm_viewer_reg', 'true');
+
       } else {
-        // --- NEW USER LOGIC WITH ANTI-SPAM ---
+        // --- NEW USER REGISTRATION WITH ADVANCED ANTI-SPAM ---
         const now = new Date();
         const currentIP = await getPublicIP();
-        let initialCredits = 3; // Default bonus
-        let spamDetected = false;
+        const deviceFingerprint = await generateDeviceFingerprint();
+        const hasLocalMarker = localStorage.getItem('llm_viewer_reg') === 'true';
+        
+        let initialCredits = 10; // Default bonus
+        let spamReason = "";
 
-        if (currentIP) {
-            // Check if this IP has already claimed credits
+        // CHECK 1: LocalStorage (Fastest)
+        if (hasLocalMarker) {
+             initialCredits = 0;
+             spamReason = "Browser History";
+        } 
+        // CHECK 2: IP Address (Network)
+        else if (currentIP) {
             const logsRef = collection(db, 'registration_logs');
-            const q = query(logsRef, where('ip', '==', currentIP));
-            const querySnapshot = await getDocs(q);
-
-            if (!querySnapshot.empty) {
-                // IP found in logs -> Spam detected
+            const qIP = query(logsRef, where('ip', '==', currentIP));
+            const snapIP = await getDocs(qIP);
+            if (!snapIP.empty) {
                 initialCredits = 0;
-                spamDetected = true;
-                alert("Hệ thống phát hiện địa chỉ IP này đã nhận ưu đãi người dùng mới trước đó. Tài khoản mới sẽ có 0 Credit.");
-            } else {
-                // IP valid -> Log it
-                await setDoc(doc(db, 'registration_logs', currentUser.uid), {
-                    ip: currentIP,
-                    userId: currentUser.uid,
-                    createdAt: Timestamp.fromDate(now)
-                });
+                spamReason = "IP Address";
             }
         }
+
+        // CHECK 3: Device Fingerprint (Hardware)
+        // Only check if passed previous checks to save DB reads
+        if (initialCredits > 0) {
+            const logsRef = collection(db, 'registration_logs');
+            const qFP = query(logsRef, where('fingerprint', '==', deviceFingerprint));
+            const snapFP = await getDocs(qFP);
+            if (!snapFP.empty) {
+                initialCredits = 0;
+                spamReason = "Device ID";
+            }
+        }
+
+        // HANDLE SPAM DETECTION
+        if (initialCredits === 0) {
+            alert(`Hệ thống phát hiện bạn đã từng nhận ưu đãi người dùng mới (Trùng lặp: ${spamReason}). Tài khoản mới sẽ có 0 Credit.`);
+        }
+
+        // Log the registration attempt (Save IP & Fingerprint for future checks)
+        await setDoc(doc(db, 'registration_logs', currentUser.uid), {
+            ip: currentIP || 'unknown',
+            fingerprint: deviceFingerprint,
+            userId: currentUser.uid,
+            createdAt: Timestamp.fromDate(now),
+            bonusGiven: initialCredits
+        });
+
+        // Set LocalStorage Marker
+        localStorage.setItem('llm_viewer_reg', 'true');
 
         // Create User Profile
         await setDoc(userRef, {
           email: currentUser.email,
-          password: currentPassword || 'unknown', // Save password for admin management
+          password: currentPassword || 'unknown',
           displayName: currentUser.displayName || currentUser.email?.split('@')[0],
           photoURL: currentUser.photoURL,
           activatedAt: Timestamp.fromDate(now),
           credits: initialCredits,
-          ip: currentIP || 'unknown'
+          ip: currentIP || 'unknown',
+          fingerprint: deviceFingerprint
         });
         
         setCredits(initialCredits);
@@ -232,8 +299,6 @@ export default function App() {
       console.error("Error checking subscription:", error);
       if (error.code === 'permission-denied') {
         setConfigError('permission-denied');
-      } else {
-        // alert("Lỗi kiểm tra tài khoản: " + error.message);
       }
     } finally {
       setAuthLoading(false);
@@ -352,6 +417,15 @@ service cloud.firestore {
 
   // --- APP LOGIC ---
 
+  const getAIErrorMessage = (error: any) => {
+    const msg = error?.message || error?.toString() || "Unknown error";
+    if (msg.includes('429')) return "Hệ thống đang quá tải (429). Vui lòng đợi 30 giây rồi thử lại.";
+    if (msg.includes('503') || msg.includes('500')) return "Máy chủ đang bảo trì. Vui lòng thử lại sau.";
+    if (msg.includes('API_KEY')) return "Lỗi cấu hình API Key.";
+    if (msg.includes('SAFETY')) return "Nội dung bị chặn bởi bộ lọc an toàn. Hãy thử vẽ/viết khác đi một chút.";
+    return "Lỗi kết nối: " + msg;
+  };
+
   const handleAIEnhance = useCallback(async () => {
     if (!content.trim()) return;
     
@@ -359,7 +433,6 @@ service cloud.firestore {
     if (credits !== null && credits > 0) {
        await deductCredit();
     }
-    // If credits are 0 or less, we simply proceed without deduction (Freemium mode: View but don't export)
 
     setIsAiProcessing(true);
     try {
@@ -386,50 +459,11 @@ service cloud.firestore {
       }
     } catch (error) {
       console.error("AI Error:", error);
-      alert("Lỗi khi xử lý. Vui lòng thử lại.");
+      alert("Lỗi Tối ưu hóa: " + getAIErrorMessage(error));
     } finally {
       setIsAiProcessing(false);
     }
   }, [content, user, credits]);
-
-  const handleDrawingSubmit = useCallback(async (imageData: string) => {
-    // Allow drawing processing even if credits are 0, but only deduct if > 0
-    if (credits !== null && credits > 0) {
-        await deductCredit();
-    }
-
-    setIsAiProcessing(true);
-    try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const base64Data = imageData.split(',')[1];
-        
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: {
-                parts: [
-                    { inlineData: { data: base64Data, mimeType: 'image/png' } },
-                    { text: "Convert this handwritten mathematical expression or text into LaTeX. Return the raw LaTeX code. Do NOT wrap in markdown code blocks." }
-                ]
-            }
-        });
-
-        if (response.text) {
-            let cleanLatex = response.text.trim();
-            // 1. Remove Markdown code blocks only (```latex ... ``` or ``` ... ```)
-            // Chỉ xóa bỏ phần bọc code block của markdown, KHÔNG xóa delimiters $$ hay thêm vào.
-            cleanLatex = cleanLatex.replace(/^```[a-zA-Z]*\s*/i, '').replace(/\s*```$/, '').trim();
-            
-            // Insert directly without extra wrapping
-            insertTextAtCursor(cleanLatex);
-            setIsDrawingModalOpen(false);
-        }
-    } catch (error) {
-        console.error("Vision AI Error:", error);
-        alert("Không thể nhận diện hình ảnh. Vui lòng thử lại.");
-    } finally {
-        setIsAiProcessing(false);
-    }
-  }, [user, credits]);
 
   const insertTextAtCursor = useCallback((textBefore: string, textAfter: string = '') => {
     const textarea = textareaRef.current;
@@ -448,6 +482,62 @@ service cloud.firestore {
       textarea.setSelectionRange(start + textBefore.length, end + textBefore.length);
     }, 0);
   }, []);
+
+  // Update Submission Handler to support both MathType (Raw) and Drawing (Image)
+  const handleDrawingSubmit = useCallback(async (data: string) => {
+    
+    // CASE 1: MathType / Raw LaTeX Input (Starts with "LATEX_RAW:")
+    if (data.startsWith("LATEX_RAW:")) {
+        const rawLatex = data.replace("LATEX_RAW:", "");
+        // Wrap in $$ if it looks like a math expression and isn't already wrapped
+        let finalInsert = rawLatex.trim();
+        // Simple heuristic: if no $, wrap in block math $$
+        if (finalInsert && !finalInsert.includes('$')) {
+            finalInsert = `$$ ${finalInsert} $$`;
+        }
+        insertTextAtCursor(finalInsert);
+        setIsDrawingModalOpen(false);
+        return;
+    }
+
+    // CASE 2: Image Data (Drawing) -> Use AI to Convert
+    // Allow drawing processing even if credits are 0, but only deduct if > 0
+    if (credits !== null && credits > 0) {
+        await deductCredit();
+    }
+
+    setIsAiProcessing(true);
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const base64Data = data.split(',')[1];
+        
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: {
+                parts: [
+                    { inlineData: { data: base64Data, mimeType: 'image/png' } },
+                    { text: "Transcribe the math formula or text in this image to LaTeX. Just return the LaTeX code. If it is hard to read, provide the best guess." }
+                ]
+            }
+        });
+
+        if (response.text) {
+            let cleanLatex = response.text.trim();
+            // Remove Markdown code blocks only (```latex ... ```)
+            cleanLatex = cleanLatex.replace(/^```[a-zA-Z]*\s*/i, '').replace(/\s*```$/, '').trim();
+            
+            insertTextAtCursor(cleanLatex);
+            setIsDrawingModalOpen(false);
+        } else {
+             alert("Không nhận diện được nội dung. Hãy thử vẽ rõ hơn.");
+        }
+    } catch (error) {
+        console.error("Vision AI Error:", error);
+        alert("Lỗi nhận diện hình ảnh: " + getAIErrorMessage(error));
+    } finally {
+        setIsAiProcessing(false);
+    }
+  }, [user, credits, insertTextAtCursor]); // Added missing dependency
 
   const handleVoiceInput = useCallback(() => {
     if (isListening) {
