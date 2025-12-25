@@ -217,41 +217,61 @@ export default function App() {
     if (!text) return '';
     let processed = text;
 
-    // 1. Chuyển đổi Block Math \[ ... \] -> $$ ... $$ có dấu cách
-    processed = processed.replace(/\\\[([\s\S]*?)\\\]/g, (match, p1) => `\n$$ ${p1.trim()} $$\n`);
+    // 1. Chuyển đổi Block Math \[ ... \] -> $$ ... $$ có dấu cách và xuống dòng
+    processed = processed.replace(/\\\[([\s\S]*?)\\\]/g, (match, p1) => `\n\n$$ ${p1.trim()} $$\n\n`);
     
     // 2. Chuyển đổi Inline Math \( ... \) -> $ ... $ có dấu cách
     processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, (match, p1) => `$ ${p1.trim()} $`);
 
-    // 3. Tách các công thức inline dính liền $...$$...$ -> $ ... $ $ ... $
-    // Ví dụ user cung cấp: x$$\tan -> x$ $\tan
+    // 3. Tách các công thức inline dính liền
     processed = processed.replace(/([^\s\$])\$\$([^\s\$])/g, '$1$ $ $2');
-    
-    // Xử lý cụ thể trường hợp $abc$$xyz$ -> $ abc $ $ xyz $
     processed = processed.replace(/(\$)([^\$]+)(\$)\s*(\$)([^\$]+)(\$)/g, '$1 $2 $3 $4 $5 $6');
 
-    // 4. Đảm bảo mọi cặp $...$ và $$...$$ có khoảng trắng bên trong nếu chưa có
-    // Inline: $formula$ -> $ formula $
+    // 4. Đảm bảo mọi cặp $...$ có khoảng trắng bên trong
     processed = processed.replace(/(^|[^\$])\$([^\$\n]+?)\$([^\$]|$)/g, (match, p1, p2, p3) => {
         return `${p1}$ ${p2.trim()} $${p3}`;
     });
 
-    // 5. Tách 2 dấu $$ block liền nhau thành 2 đoạn
+    // 5. Tách các dấu $$ block liền nhau
     processed = processed.replace(/\$\$\s*\$\$/g, '$$ \n\n $$');
 
-    // 6. Dọn dẹp các artifact của AI
     const lines = processed.split('\n').filter(line => !["Copy code", "markdown", "latex", "html"].includes(line.trim()));
     return lines.join('\n').replace(/\n{3,}/g, '\n\n');
   };
 
+  const insertTextAtCursor = useCallback((textBefore: string, textAfter: string = '', replace: boolean = false) => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+        setContent(prev => prev + textBefore + textAfter);
+        return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const val = textarea.value;
+    
+    // Nếu replace = true (khi dán), vùng chọn [start, end] sẽ bị xóa bỏ
+    // Nếu replace = false (khi nhấn Bold/Italic), vùng chọn sẽ được kẹp giữa textBefore và textAfter
+    const middle = replace ? '' : val.substring(start, end);
+    
+    const newContent = val.substring(0, start) + textBefore + middle + textAfter + val.substring(end);
+    setContent(newContent);
+    
+    // Cập nhật vị trí con trỏ sau khi chèn
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + textBefore.length + middle.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  }, []);
+
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
      const pastedData = e.clipboardData.getData('text');
      const formattedData = normalizeContent(pastedData);
-     if (formattedData !== pastedData) {
-        e.preventDefault();
-        insertTextAtCursor(formattedData);
-     }
-  }, []);
+     
+     // Luôn can thiệp vào hành động dán để xử lý việc "Bôi đen -> Thay thế" chuẩn xác
+     e.preventDefault();
+     insertTextAtCursor(formattedData, '', true);
+  }, [insertTextAtCursor]);
 
   const handleAIEnhance = useCallback(async () => {
     if (!content.trim()) return;
@@ -262,7 +282,7 @@ export default function App() {
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: content,
-        config: { systemInstruction: "Bạn là chuyên gia định dạng Markdown. Hãy chuẩn hóa toán học sang LaTeX chuẩn ($ cho inline, $$ cho block), thêm dấu cách vào trong dấu $ (ví dụ $ x $), loại bỏ rác thừa." }
+        config: { systemInstruction: "Bạn là chuyên gia định dạng Markdown Toán học. Hãy chuẩn hóa toán học sang LaTeX chuẩn ($ cho inline, $$ cho block), thêm dấu cách vào trong dấu $, đảm bảo các công thức block nằm trên dòng riêng biệt." }
       });
       if (response.text) {
         setContent(response.text);
@@ -274,16 +294,6 @@ export default function App() {
       setIsAiProcessing(false);
     }
   }, [content, credits]);
-
-  const insertTextAtCursor = useCallback((textBefore: string, textAfter: string = '') => {
-    const textarea = textareaRef.current;
-    if (!textarea) { setContent(prev => prev + textBefore + textAfter); return; }
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const newContent = textarea.value.substring(0, start) + textBefore + textarea.value.substring(start, end) + textAfter + textarea.value.substring(end);
-    setContent(newContent);
-    setTimeout(() => { textarea.focus(); textarea.setSelectionRange(start + textBefore.length, end + textBefore.length); }, 0);
-  }, []);
 
   const handleManualPreview = useCallback(() => {
     const clean = normalizeContent(content);
@@ -360,7 +370,7 @@ export default function App() {
         </div>
       </div>
       <DrawingModal isOpen={isDrawingModalOpen} onClose={() => setIsDrawingModalOpen(false)} onSubmit={(data) => {
-        if(data.startsWith("LATEX_RAW:")) insertTextAtCursor(data.replace("LATEX_RAW:", ""));
+        if(data.startsWith("LATEX_RAW:")) insertTextAtCursor(data.replace("LATEX_RAW:", ""), '', true);
         setIsDrawingModalOpen(false);
       }} isProcessing={false} />
     </div>
