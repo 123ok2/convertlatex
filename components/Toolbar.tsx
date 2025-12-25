@@ -102,7 +102,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             variant="secondary" 
             onClick={onManualPreview}
             className="!py-1.5 !px-3 text-sm font-medium border-slate-200 text-slate-700 hover:text-indigo-600"
-            title="Ctrl + Enter"
+            title="Xem trước miễn phí"
         >
             <Eye className="w-4 h-4 sm:mr-2" />
             <span className="hidden sm:inline">Xem trước</span>
@@ -113,7 +113,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           onClick={onAIEnhance}
           disabled={isAiProcessing || isDeducting}
           className="!py-1.5 !px-3 text-sm font-medium shadow-indigo-200"
-          title="Tự động sửa lỗi & Format đẹp (-1 Credit)"
+          title="Tối ưu hóa nội dung (-1 Credit)"
         >
           {isAiProcessing ? (
             <Loader2 className="w-4 h-4 sm:mr-2 animate-spin" />
@@ -128,9 +128,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* Group 4: Export Tools */}
       <div className="flex items-center gap-1 flex-shrink-0">
-        <IconButton onClick={onCopyFormatted} icon={<Copy className="w-4 h-4" />} title="Sao chép định dạng (Word/Email)" />
-        <IconButton onClick={onPrint} icon={<Printer className="w-4 h-4" />} title="In / Xuất PDF" />
-        <IconButton onClick={onExportWord} icon={<Download className="w-4 h-4" />} title="Tải file Word (.doc)" />
+        <IconButton 
+          onClick={onCopyFormatted} 
+          icon={<Copy className="w-4 h-4" />} 
+          title="Sao chép định dạng (-1 Credit)" 
+          className={isDeducting ? 'opacity-50 cursor-wait' : ''}
+        />
+        <IconButton 
+          onClick={onPrint} 
+          icon={<Printer className="w-4 h-4" />} 
+          title="In / Xuất PDF (-1 Credit)" 
+        />
+        <IconButton 
+          onClick={onExportWord} 
+          icon={<Download className="w-4 h-4" />} 
+          title="Tải file Word (-1 Credit)" 
+        />
         <Separator />
         <IconButton 
           onClick={onClear} 

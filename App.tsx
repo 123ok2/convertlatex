@@ -22,87 +22,65 @@ import {
   setDoc, 
   updateDoc,
   increment,
-  Timestamp,
-  collection,
-  query,
-  where,
-  getDocs
+  Timestamp
 } from 'firebase/firestore';
 import { 
   Bot, 
   Loader2, 
-  Phone,
-  UserCheck,
-  LogOut,
-  ShieldCheck,
-  Mail,
-  KeyRound,
-  Zap,
-  AlertTriangle,
-  Copy,
-  Check,
-  FileText,
-  RefreshCw,
-  Mic,
-  X,
-  ChevronDown
+  LogOut, 
+  Zap, 
+  AlertTriangle, 
+  Copy, 
+  CheckCircle2, 
+  Info,
+  X
 } from 'lucide-react';
 
 export default function App() {
   // Auth State
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | any | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [accessStatus, setAccessStatus] = useState<'granted' | 'denied' | 'checking'>('checking');
   const [credits, setCredits] = useState<number | null>(null);
-  const [configError, setConfigError] = useState<string | null>(null);
-  const [copiedRules, setCopiedRules] = useState(false);
-  
-  // Login/Register Form State
+  const [isLoginLoading, setIsLoginLoading] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
-  const [isLoginLoading, setIsLoginLoading] = useState(false);
-
-  // Refs
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
-  // Ref to track password for async auth callbacks where state might be stale
-  const passwordRef = useRef('');
 
   // App State
   const [content, setContent] = useState<string>('');
   const [previewContent, setPreviewContent] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('preview');
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isAiProcessing, setIsAiProcessing] = useState<boolean>(false);
   const [isDeducting, setIsDeducting] = useState(false);
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  
-  // Alert State
   const [showCreditAlert, setShowCreditAlert] = useState(false);
-  
-  // Voice & Stats State
-  const [isListening, setIsListening] = useState(false);
-  const [wordCount, setWordCount] = useState(0);
-  const [charCount, setCharCount] = useState(0);
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'info' | 'error'} | null>(null);
 
-  // Sync password state to ref
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef('');
+
   useEffect(() => {
     passwordRef.current = password;
   }, [password]);
 
-  // --- AUTHENTICATION LOGIC ---
+  // Toast auto-hide
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
       if (currentUser) {
+        setUser(currentUser);
         await checkUserSubscription(currentUser);
       } else {
-        setAccessStatus('checking');
+        setUser(null);
         setCredits(null);
         setAuthLoading(false);
       }
@@ -110,196 +88,24 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Keyboard Shortcuts & Copy Protection
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-        // Ctrl + Enter to Preview
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            handleManualPreview();
-        }
-    };
-
-    const handleCopyCut = (e: ClipboardEvent) => {
-      if (user && credits !== null && credits <= 0) {
-        e.preventDefault();
-        setShowCreditAlert(true);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    if (user) {
-      document.addEventListener('copy', handleCopyCut);
-      document.addEventListener('cut', handleCopyCut);
-    }
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('copy', handleCopyCut);
-      document.removeEventListener('cut', handleCopyCut);
-    };
-  }, [content, user, credits]); // Depend on content/credits
-
-  // Update stats whenever content changes
-  useEffect(() => {
-    const words = content.trim().split(/\s+/).filter(w => w.length > 0).length;
-    setWordCount(words);
-    setCharCount(content.length);
-  }, [content]);
-
-  // --- ANTI-ABUSE SYSTEM ---
-
-  // 1. Get IP
-  const getPublicIP = async (): Promise<string | null> => {
-    try {
-        const response = await fetch('https://api.ipify.org?format=json');
-        const data = await response.json();
-        return data.ip;
-    } catch (error) {
-        console.error("Failed to fetch IP", error);
-        return null;
-    }
-  };
-
-  // 2. Generate Device Fingerprint (Canvas + Audio + Navigator)
-  const generateDeviceFingerprint = async (): Promise<string> => {
-    try {
-        const parts: string[] = [];
-        
-        // Basic Nav
-        parts.push(navigator.userAgent);
-        parts.push(navigator.language);
-        parts.push(new Date().getTimezoneOffset().toString());
-        parts.push(window.screen.width + 'x' + window.screen.height);
-        
-        // Canvas Fingerprinting
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-            canvas.width = 200;
-            canvas.height = 50;
-            ctx.textBaseline = "top";
-            ctx.font = "14px 'Arial'";
-            ctx.textBaseline = "alphabetic";
-            ctx.fillStyle = "#f60";
-            ctx.fillRect(125,1,62,20);
-            ctx.fillStyle = "#069";
-            ctx.fillText("LLM_Viewer_Auth_FP", 2, 15);
-            ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
-            ctx.fillText("User_Validation", 4, 17);
-            parts.push(canvas.toDataURL());
-        }
-
-        // Simple Hash Function (DJB2 variant)
-        const str = parts.join("###");
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32bit integer
-        }
-        return Math.abs(hash).toString(16);
-    } catch (e) {
-        return "unknown_device_" + Math.random().toString(36);
-    }
-  };
-
   const checkUserSubscription = async (currentUser: User) => {
-    setAccessStatus('checking');
-    setConfigError(null);
     try {
       const userRef = doc(db, "users", currentUser.uid);
       const userSnap = await getDoc(userRef);
-      const currentPassword = passwordRef.current;
-
       if (userSnap.exists()) {
-        // --- EXISTING USER ---
         const data = userSnap.data();
-        const currentCredits = typeof data.credits === 'number' ? data.credits : 0;
-        setCredits(currentCredits);
-        setAccessStatus(currentCredits > 0 ? 'granted' : 'denied');
-
-        if (currentPassword) {
-            await updateDoc(userRef, { password: currentPassword });
-        }
-
-        // Mark this device as registered in LocalStorage just in case
-        localStorage.setItem('llm_viewer_reg', 'true');
-
+        setCredits(data.credits ?? 0);
       } else {
-        // --- NEW USER REGISTRATION WITH ADVANCED ANTI-SPAM ---
-        const now = new Date();
-        const currentIP = await getPublicIP();
-        const deviceFingerprint = await generateDeviceFingerprint();
-        const hasLocalMarker = localStorage.getItem('llm_viewer_reg') === 'true';
-        
-        let initialCredits = 10; // Default bonus
-        let spamReason = "";
-
-        // CHECK 1: LocalStorage (Fastest)
-        if (hasLocalMarker) {
-             initialCredits = 0;
-             spamReason = "Browser History";
-        } 
-        // CHECK 2: IP Address (Network)
-        else if (currentIP) {
-            const logsRef = collection(db, 'registration_logs');
-            const qIP = query(logsRef, where('ip', '==', currentIP));
-            const snapIP = await getDocs(qIP);
-            if (!snapIP.empty) {
-                initialCredits = 0;
-                spamReason = "IP Address";
-            }
-        }
-
-        // CHECK 3: Device Fingerprint (Hardware)
-        // Only check if passed previous checks to save DB reads
-        if (initialCredits > 0) {
-            const logsRef = collection(db, 'registration_logs');
-            const qFP = query(logsRef, where('fingerprint', '==', deviceFingerprint));
-            const snapFP = await getDocs(qFP);
-            if (!snapFP.empty) {
-                initialCredits = 0;
-                spamReason = "Device ID";
-            }
-        }
-
-        // HANDLE SPAM DETECTION
-        if (initialCredits === 0) {
-            alert(`Hệ thống phát hiện bạn đã từng nhận ưu đãi người dùng mới (Trùng lặp: ${spamReason}). Tài khoản mới sẽ có 0 Credit.`);
-        }
-
-        // Log the registration attempt (Save IP & Fingerprint for future checks)
-        await setDoc(doc(db, 'registration_logs', currentUser.uid), {
-            ip: currentIP || 'unknown',
-            fingerprint: deviceFingerprint,
-            userId: currentUser.uid,
-            createdAt: Timestamp.fromDate(now),
-            bonusGiven: initialCredits
-        });
-
-        // Set LocalStorage Marker
-        localStorage.setItem('llm_viewer_reg', 'true');
-
-        // Create User Profile
+        const initialCredits = 10;
         await setDoc(userRef, {
           email: currentUser.email,
-          password: currentPassword || 'unknown',
-          displayName: currentUser.displayName || currentUser.email?.split('@')[0],
-          photoURL: currentUser.photoURL,
-          activatedAt: Timestamp.fromDate(now),
-          credits: initialCredits,
-          ip: currentIP || 'unknown',
-          fingerprint: deviceFingerprint
+          activatedAt: Timestamp.now(),
+          credits: initialCredits
         });
-        
         setCredits(initialCredits);
-        setAccessStatus(initialCredits > 0 ? 'granted' : 'denied');
       }
-    } catch (error: any) {
-      console.error("Error checking subscription:", error);
-      if (error.code === 'permission-denied') {
-        setConfigError('permission-denied');
-      }
+    } catch (error) {
+      console.error("Auth error:", error);
     } finally {
       setAuthLoading(false);
     }
@@ -307,28 +113,23 @@ export default function App() {
 
   const deductCredit = async (): Promise<boolean> => {
     if (!user || credits === null) return false;
-    
-    // Allow process to continue even if credits are 0, but don't deduct
     if (credits <= 0) {
-      setAccessStatus('denied');
-      return false; 
+      setShowCreditAlert(true);
+      return false;
     }
 
     setIsDeducting(true);
     try {
+      if (user.uid === 'guest') {
+        setCredits(prev => (prev !== null ? prev - 1 : 0));
+        return true;
+      }
       const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
-        credits: increment(-1)
-      });
+      await updateDoc(userRef, { credits: increment(-1) });
       setCredits(prev => (prev !== null ? prev - 1 : 0));
       return true;
-    } catch (error: any) {
-      console.error("Error deducting credit:", error);
-      if (error.code === 'permission-denied') {
-        setConfigError('permission-denied');
-      } else {
-        alert("Không thể trừ điểm. Vui lòng kiểm tra kết nối.");
-      }
+    } catch (error) {
+      setToast({ message: "Lỗi kết nối khi trừ điểm!", type: 'error' });
       return false;
     } finally {
       setIsDeducting(false);
@@ -337,133 +138,60 @@ export default function App() {
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
-    
     setIsLoginLoading(true);
     try {
-      // Set persistence based on checkbox
       const persistenceType = rememberMe ? browserLocalPersistence : browserSessionPersistence;
       await setPersistence(auth, persistenceType);
-
-      if (isRegistering) {
-        // Đăng ký
-        await createUserWithEmailAndPassword(auth, email, password);
-      } else {
-        // Đăng nhập
-        await signInWithEmailAndPassword(auth, email, password);
-      }
+      if (isRegistering) await createUserWithEmailAndPassword(auth, email, password);
+      else await signInWithEmailAndPassword(auth, email, password);
     } catch (error: any) {
-      console.error("Auth failed:", error);
-      let message = "Thao tác thất bại: " + error.message;
-      
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
-        message = "Đăng nhập thất bại: Mật khẩu không đúng hoặc Email không tồn tại.";
-      } else if (error.code === 'auth/user-not-found') {
-        message = "Tài khoản không tồn tại. Vui lòng kiểm tra email hoặc đăng ký mới.";
-      } else if (error.code === 'auth/email-already-in-use') {
-        message = "Email này đã được đăng ký. Vui lòng chuyển sang Đăng nhập.";
-      } else if (error.code === 'auth/weak-password') {
-        message = "Mật khẩu quá yếu. Vui lòng chọn mật khẩu từ 6 ký tự trở lên.";
-      } else if (error.code === 'auth/too-many-requests') {
-        message = "Bạn đã thử đăng nhập sai quá nhiều lần. Vui lòng thử lại sau.";
-      }
-      
-      alert(message);
+      setToast({ message: "Lỗi: " + error.message, type: 'error' });
     } finally {
       setIsLoginLoading(false);
     }
   };
 
+  const handleGuestLogin = () => {
+    setUser({ uid: 'guest', email: 'guest@llm.com', displayName: 'Khách' } as any);
+    setCredits(50);
+    setToast({ message: "Đã vào với tư cách Khách (50 Credits)", type: 'info' });
+  };
+
   const handleLogout = async () => {
-    if (window.confirm("Bạn có chắc muốn đăng xuất?")) {
-      await signOut(auth);
-      setContent('');
-      setPreviewContent('');
-      setEmail('');
-      setPassword('');
-      passwordRef.current = '';
-      setCredits(null);
-      setConfigError(null);
-      setIsRegistering(false);
-      setShowProfileMenu(false);
-    }
-  };
-
-  const copyRulesToClipboard = () => {
-    const rules = `rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    match /registration_logs/{logId} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}`;
-    navigator.clipboard.writeText(rules);
-    setCopiedRules(true);
-    setTimeout(() => {
-        setCopiedRules(false);
-    }, 2000);
-  };
-
-  const handleContextMenu = (e: React.MouseEvent) => {
-    if (credits !== null && credits <= 0) {
-      e.preventDefault();
-      setShowCreditAlert(true);
-    }
-  };
-
-  // --- APP LOGIC ---
-
-  const getAIErrorMessage = (error: any) => {
-    const msg = error?.message || error?.toString() || "Unknown error";
-    if (msg.includes('429')) return "Hệ thống đang quá tải (429). Vui lòng đợi 30 giây rồi thử lại.";
-    if (msg.includes('503') || msg.includes('500')) return "Máy chủ đang bảo trì. Vui lòng thử lại sau.";
-    if (msg.includes('API_KEY')) return "Lỗi cấu hình API Key.";
-    if (msg.includes('SAFETY')) return "Nội dung bị chặn bởi bộ lọc an toàn. Hãy thử vẽ/viết khác đi một chút.";
-    return "Lỗi kết nối: " + msg;
+    await signOut(auth);
+    setToast({ message: "Đã đăng xuất", type: 'info' });
   };
 
   const handleAIEnhance = useCallback(async () => {
     if (!content.trim()) return;
-    
-    // Allow processing even if credits are 0, but only deduct if > 0
-    if (credits !== null && credits > 0) {
-       await deductCredit();
-    }
+    const canProceed = await deductCredit();
+    if (!canProceed) return;
 
     setIsAiProcessing(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const systemPrompt = `
-        Bạn là một chuyên gia biên tập kỹ thuật và định dạng Markdown.
-        QUAN TRỌNG:
-        1. XỬ LÝ TOÁN HỌC (LATEX): Chuyển đổi TẤT CẢ các định dạng toán học (như \\[ ... \\], \\( ... \\)) về chuẩn Markdown LaTeX ($$...$$ cho block, $...$ cho inline).
-        2. LOẠI BỎ RÁC: Xóa các dòng chữ thừa như "Copy code", "html", "markdown", các lời dẫn chuyện.
-        3. ĐỊNH DẠNG: Chuẩn hóa Heading, Table, Code block.
-        4. OUTPUT: Chỉ trả về nội dung Markdown thuần túy.
-      `;
-
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: content,
-        config: { systemInstruction: systemPrompt }
+        config: { 
+          systemInstruction: "Bạn là chuyên gia định dạng Markdown và Toán học. Hãy chuẩn hóa nội dung, sửa lỗi LaTeX (như dấu phẩy trong công thức) và làm đẹp các bảng biểu. Trả về kết quả Markdown thuần túy." 
+        }
       });
-
       if (response.text) {
         setContent(response.text);
         setPreviewContent(response.text);
-        setActiveTab('preview');
+        setToast({ message: "✨ Đã tối ưu hóa nội dung (-1 Credit)", type: 'success' });
       }
     } catch (error) {
-      console.error("AI Error:", error);
-      alert("Lỗi Tối ưu hóa: " + getAIErrorMessage(error));
+      setToast({ message: "Lỗi AI: " + error, type: 'error' });
     } finally {
       setIsAiProcessing(false);
     }
   }, [content, user, credits]);
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    setToast({ message: "📋 Đã dán nội dung! Bạn có thể xem trước miễn phí.", type: 'success' });
+  };
 
   const insertTextAtCursor = useCallback((textBefore: string, textAfter: string = '') => {
     const textarea = textareaRef.current;
@@ -474,8 +202,7 @@ service cloud.firestore {
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const previousContent = textarea.value;
-    const selectedText = previousContent.substring(start, end);
-    const newContent = previousContent.substring(0, start) + textBefore + selectedText + textAfter + previousContent.substring(end);
+    const newContent = previousContent.substring(0, start) + textBefore + previousContent.substring(start, end) + textAfter + previousContent.substring(end);
     setContent(newContent);
     setTimeout(() => {
       textarea.focus();
@@ -483,563 +210,197 @@ service cloud.firestore {
     }, 0);
   }, []);
 
-  // Update Submission Handler to support both MathType (Raw) and Drawing (Image)
   const handleDrawingSubmit = useCallback(async (data: string) => {
-    
-    // CASE 1: MathType / Raw LaTeX Input (Starts with "LATEX_RAW:")
     if (data.startsWith("LATEX_RAW:")) {
-        const rawLatex = data.replace("LATEX_RAW:", "");
-        // Wrap in $$ if it looks like a math expression and isn't already wrapped
-        let finalInsert = rawLatex.trim();
-        // Simple heuristic: if no $, wrap in block math $$
-        if (finalInsert && !finalInsert.includes('$')) {
-            finalInsert = `$$ ${finalInsert} $$`;
-        }
-        insertTextAtCursor(finalInsert);
+        insertTextAtCursor(data.replace("LATEX_RAW:", ""));
         setIsDrawingModalOpen(false);
         return;
     }
-
-    // CASE 2: Image Data (Drawing) -> Use AI to Convert
-    // Allow drawing processing even if credits are 0, but only deduct if > 0
-    if (credits !== null && credits > 0) {
-        await deductCredit();
-    }
+    // Hành động vẽ tay được coi là miễn phí (Offline MathType) theo yêu cầu mới nhất 
+    // Nếu bạn muốn trừ điểm AI Vision cho vẽ tay, hãy bỏ comment deductCredit dưới đây:
+    // const canProceed = await deductCredit();
+    // if (!canProceed) return;
 
     setIsAiProcessing(true);
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const base64Data = data.split(',')[1];
-        
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: {
                 parts: [
-                    { inlineData: { data: base64Data, mimeType: 'image/png' } },
-                    { text: "Transcribe the math formula or text in this image to LaTeX. Just return the LaTeX code. If it is hard to read, provide the best guess." }
+                    { inlineData: { data: data.split(',')[1], mimeType: 'image/png' } },
+                    { text: "Chuyển đổi hình ảnh vẽ tay này sang mã LaTeX chuẩn. Chỉ trả về mã LaTeX." }
                 ]
             }
         });
-
         if (response.text) {
-            let cleanLatex = response.text.trim();
-            // Remove Markdown code blocks only (```latex ... ```)
-            cleanLatex = cleanLatex.replace(/^```[a-zA-Z]*\s*/i, '').replace(/\s*```$/, '').trim();
-            
-            insertTextAtCursor(cleanLatex);
+            insertTextAtCursor(response.text.trim());
             setIsDrawingModalOpen(false);
-        } else {
-             alert("Không nhận diện được nội dung. Hãy thử vẽ rõ hơn.");
+            setToast({ message: "🎨 Đã nhận diện công thức", type: 'success' });
         }
     } catch (error) {
-        console.error("Vision AI Error:", error);
-        alert("Lỗi nhận diện hình ảnh: " + getAIErrorMessage(error));
+        setToast({ message: "Lỗi nhận diện: " + error, type: 'error' });
     } finally {
         setIsAiProcessing(false);
     }
-  }, [user, credits, insertTextAtCursor]); // Added missing dependency
-
-  const handleVoiceInput = useCallback(() => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
-    }
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Trình duyệt của bạn không hỗ trợ nhận diện giọng nói.");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'vi-VN';
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    
-    recognition.onresult = (event: any) => {
-      let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        }
-      }
-      if (finalTranscript) {
-        insertTextAtCursor(finalTranscript + ' ');
-      }
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-  }, [isListening, insertTextAtCursor]);
-
-  const handleManualPreview = useCallback(() => {
-    setPreviewContent(content);
-    setActiveTab('preview');
-  }, [content]);
-
-  const handlePrint = useCallback(() => {
-    if (credits !== null && credits <= 0) {
-        setShowCreditAlert(true);
-        return;
-    }
-
-    if (!previewContent) {
-        alert("Vui lòng nhấn 'Cập nhật Xem trước' hoặc 'Tối ưu hóa' để tạo bản xem trước trước khi in.");
-        return;
-    }
-    setActiveTab('preview');
-    setTimeout(() => {
-        window.print();
-    }, 500);
-  }, [previewContent, credits]);
-
-  const handleExportWord = useCallback(() => {
-    if (credits !== null && credits <= 0) {
-        setShowCreditAlert(true);
-        return;
-    }
-
-    const previewEl = document.getElementById('markdown-preview-content');
-    if (!previewEl) {
-        alert("Vui lòng nhấn 'Cập nhật Xem trước' hoặc 'Tối ưu hóa' trước khi xuất file.");
-        return;
-    }
-
-    const htmlContent = `
-      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-      <head>
-        <meta charset="utf-8">
-        <title>Export</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-        <!--[if gte mso 9]>
-        <xml>
-        <w:WordDocument>
-        <w:View>Print</w:View>
-        <w:Zoom>100</w:Zoom>
-        <w:DoNotOptimizeForBrowser/>
-        </w:WordDocument>
-        </xml>
-        <![endif]-->
-        <style>
-          body { font-family: 'Times New Roman', serif; line-height: 1.5; font-size: 13pt; }
-          h1, h2, h3 { font-weight: bold; margin-bottom: 12pt; }
-          table { border-collapse: collapse; width: 100%; margin-bottom: 12pt; }
-          td, th { border: 1px solid #000; padding: 5pt; vertical-align: top; }
-        </style>
-      </head>
-      <body>${previewEl.innerHTML}</body>
-      </html>
-    `;
-
-    const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `document-${new Date().toISOString().slice(0,10)}.doc`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [credits]);
+  }, [user, credits, insertTextAtCursor]);
 
   const handleCopyFormatted = useCallback(async () => {
-    if (credits !== null && credits <= 0) {
-        setShowCreditAlert(true);
-        return;
-    }
-
     const previewEl = document.getElementById('markdown-preview-content');
-    if (!previewEl) {
-        alert("Vui lòng nhấn 'Xem trước' trước khi copy.");
-        return;
-    }
+    if (!previewEl) return;
+
+    const canProceed = await deductCredit();
+    if (!canProceed) return;
 
     try {
       const blob = new Blob([previewEl.innerHTML], { type: "text/html" });
       await navigator.clipboard.write([new ClipboardItem({ ["text/html"]: blob })]);
-      alert('Đã sao chép định dạng!');
-    } catch (err) {
-      console.error('Copy failed: ', err);
-      alert('Lỗi sao chép.');
+      setToast({ message: "✅ Đã sao chép thành công (-1 Credit)", type: 'success' });
+    } catch (err) { 
+      setToast({ message: "Lỗi sao chép định dạng!", type: 'error' });
     }
-  }, [credits]);
+  }, [user, credits]);
 
-  const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const handleManualPreview = useCallback(() => {
+    // Xem trước giờ đã MIỄN PHÍ
+    setPreviewContent(content);
+    setActiveTab('preview');
+    setToast({ message: "👁️ Đã cập nhật xem trước", type: 'info' });
+  }, [content]);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result;
-      if (typeof text === 'string') {
-        setContent(text);
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = '';
-  }, []);
+  const handlePrint = useCallback(async () => {
+    const canProceed = await deductCredit();
+    if (!canProceed) return;
 
-  const handleClear = useCallback(() => {
-    if(window.confirm('Xóa toàn bộ nội dung?')) {
-        setContent('');
-        setPreviewContent('');
-    }
-  }, []);
+    setActiveTab('preview');
+    setTimeout(() => {
+      window.print();
+      setToast({ message: "🖨️ Đã thực hiện lệnh in (-1 Credit)", type: 'success' });
+    }, 500);
+  }, [user, credits]);
 
-  // --- RENDER CONDITIONALS ---
+  const handleExportWord = useCallback(async () => {
+    const previewEl = document.getElementById('markdown-preview-content');
+    if (!previewEl) return;
 
-  if (authLoading) {
-    return (
-      <div className="h-screen flex flex-col items-center justify-center bg-slate-50">
-        <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mb-4" />
-        <p className="text-slate-500 font-medium">Đang tải dữ liệu...</p>
-      </div>
-    );
-  }
+    const canProceed = await deductCredit();
+    if (!canProceed) return;
 
-  // Permission Error Screen
-  if (configError === 'permission-denied') {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white max-w-2xl w-full rounded-2xl shadow-xl p-8 border border-red-100">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="bg-red-100 p-3 rounded-full">
-              <ShieldCheck className="w-8 h-8 text-red-600" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800">Cấu hình bảo mật chưa hoàn tất</h1>
-              <p className="text-slate-500">Ứng dụng bị chặn truy cập Database</p>
-            </div>
-          </div>
-          <div className="space-y-6">
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-              <h3 className="font-semibold text-slate-700 mb-2">Cách khắc phục:</h3>
-              <ol className="list-decimal list-inside space-y-2 text-slate-600">
-                <li>Vào <a href="https://console.firebase.google.com/" target="_blank" className="text-indigo-600 hover:underline">Firebase Console</a> &gt; Firestore Database &gt; Rules</li>
-                <li>Copy đoạn mã bên dưới và dán đè lên nội dung cũ.</li>
-                <li>Nhấn <strong>Publish</strong>.</li>
-              </ol>
-            </div>
-            <div className="relative">
-                <Button 
-                  variant="secondary" 
-                  onClick={copyRulesToClipboard}
-                  className="absolute top-2 right-2 !py-1 !px-2 text-xs"
-                >
-                  {copiedRules ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-                </Button>
-                <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-sm font-mono overflow-x-auto">
-{`rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    match /registration_logs/{logId} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}`}
-                </pre>
-            </div>
-            <div className="text-center pt-4">
-              <Button onClick={() => window.location.reload()} variant="primary">Đã cập nhật xong, Tải lại trang</Button>
-            </div>
+    const contentHtml = previewEl.innerHTML;
+    const fullHtml = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>Exported Document</title></head>
+      <body>${contentHtml}</body>
+      </html>
+    `;
+    
+    const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `document_${Date.now()}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setToast({ message: "📂 Đã xuất file Word (-1 Credit)", type: 'success' });
+  }, [user, credits]);
+
+  if (authLoading) return <div className="h-screen flex items-center justify-center"><Loader2 className="w-10 h-10 animate-spin text-indigo-600" /></div>;
+
+  if (!user) return (
+    <div className="h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
+        <div className="bg-indigo-600 p-8 text-center"><Bot className="w-16 h-16 text-white mx-auto mb-4" /><h1 className="text-2xl font-bold text-white mb-2">LLM Markdown Viewer</h1></div>
+        <div className="p-8">
+          <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Email" required />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Mật khẩu" required />
+            <Button type="submit" disabled={isLoginLoading} className="w-full justify-center">{isRegistering ? 'Đăng ký' : 'Đăng nhập'}</Button>
+          </form>
+          <div className="flex flex-col gap-3 text-center">
+            <button onClick={() => setIsRegistering(!isRegistering)} className="text-sm text-indigo-600 font-medium">{isRegistering ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký'}</button>
+            <div className="flex items-center gap-2"><div className="flex-1 h-px bg-slate-200"></div><span className="text-xs text-slate-400 uppercase">Hoặc</span><div className="flex-1 h-px bg-slate-200"></div></div>
+            <button onClick={handleGuestLogin} className="text-sm text-slate-500 hover:text-indigo-600 font-bold transition-colors">Dùng thử với tư cách Khách</button>
           </div>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
-  // Login/Register Screen
-  if (!user) {
-    return (
-      <div className="h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden animate-in fade-in duration-500">
-          <div className="bg-indigo-600 p-8 text-center">
-            <Bot className="w-16 h-16 text-white mx-auto mb-4" />
-            <h1 className="text-2xl font-bold text-white mb-2">LLM Markdown Viewer</h1>
-            <p className="text-indigo-100">{isRegistering ? 'Đăng ký tài khoản mới' : 'Đăng nhập để bắt đầu'}</p>
-          </div>
-          <div className="p-8">
-            <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="email@example.com" required />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Mật khẩu</label>
-                <div className="relative">
-                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="••••••••" required minLength={6} />
-                </div>
-              </div>
-              <div className="flex items-center">
-                <input id="remember-me" type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="h-4 w-4 text-indigo-600 border-gray-300 rounded" />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-slate-700">Ghi nhớ đăng nhập</label>
-              </div>
-              <Button type="submit" disabled={isLoginLoading} className="w-full justify-center bg-slate-900 hover:bg-slate-800 mt-2">
-                {isLoginLoading ? <Loader2 className="animate-spin w-5 h-5" /> : (isRegistering ? 'Đăng ký' : 'Đăng nhập')}
-              </Button>
-            </form>
-            <div className="text-center">
-              <button type="button" onClick={() => { setIsRegistering(!isRegistering); setConfigError(null); }} className="text-sm text-indigo-600 hover:text-indigo-800 font-medium hover:underline">
-                {isRegistering ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // MAIN APP INTERFACE
   return (
-    <div className={`flex flex-col h-screen bg-white text-slate-900 font-sans ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
-      {/* HEADER */}
-      <header className="flex-none h-16 bg-white border-b border-slate-200 px-4 md:px-6 flex items-center justify-between shadow-sm z-20 no-print">
-        <div className="flex items-center gap-3">
-          <div className="bg-indigo-600 p-2 rounded-lg shadow-md shadow-indigo-200">
-            <Bot className="w-6 h-6 text-white" />
+    <div className="flex flex-col h-screen bg-white text-slate-900 overflow-hidden">
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top duration-300">
+          <div className={`flex items-center gap-3 px-6 py-3 rounded-full shadow-2xl border ${
+            toast.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 
+            toast.type === 'info' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 
+            'bg-red-50 border-red-200 text-red-700'
+          }`}>
+            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <Info className="w-5 h-5" />}
+            <span className="font-bold text-sm">{toast.message}</span>
           </div>
-          <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-700 to-indigo-500 bg-clip-text text-transparent hidden sm:block">LLM Viewer</h1>
         </div>
+      )}
+
+      <header className="h-16 bg-white border-b px-6 flex items-center justify-between shadow-sm z-20 no-print">
+        <div className="flex items-center gap-2 font-bold text-indigo-600 text-xl"><Bot /><span>LLM Viewer</span></div>
         <div className="flex items-center gap-4">
-           <div className={`flex items-center gap-2 px-3 py-1.5 border rounded-full text-sm font-medium ${credits && credits > 0 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-             {isDeducting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className={`w-4 h-4 ${credits && credits > 0 ? 'fill-yellow-500 text-yellow-600' : 'fill-red-500 text-red-600'}`} />}
-             <span>{credits ?? '...'} Credits</span>
+           <div className="flex items-center gap-2 px-4 py-1.5 bg-yellow-50 text-yellow-700 border rounded-full text-sm font-bold border-yellow-200 shadow-sm transition-all">
+             {isDeducting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 fill-yellow-500" />}
+             <span>{credits ?? 0} Credits</span>
            </div>
-           
-           <div className="h-8 w-px bg-slate-200 mx-2 hidden sm:block"></div>
-           
-           {/* USER PROFILE DROPDOWN */}
            <div className="relative">
-             <button 
-               onClick={() => setShowProfileMenu(!showProfileMenu)}
-               className="flex items-center gap-2 focus:outline-none group p-1 rounded-full hover:bg-slate-100 transition-colors"
-               title="Thông tin tài khoản"
-             >
-               {user?.photoURL ? (
-                 <img src={user.photoURL} alt="Avatar" className="w-9 h-9 rounded-full border border-slate-200 shadow-sm" />
-               ) : (
-                 <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border border-indigo-200">
-                   {user?.email?.[0].toUpperCase()}
-                 </div>
-               )}
-               <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
-             </button>
-
-             {/* BACKDROP FOR CLOSING */}
+             <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border border-indigo-200 uppercase hover:bg-indigo-200 transition-colors">{user?.email?.[0]}</button>
              {showProfileMenu && (
-                <div 
-                  className="fixed inset-0 z-40 cursor-default" 
-                  onClick={() => setShowProfileMenu(false)}
-                ></div>
-             )}
-
-             {/* DROPDOWN MENU */}
-             {showProfileMenu && (
-               <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right z-50">
-                  <div className="p-5 bg-gradient-to-br from-indigo-50 to-white border-b border-indigo-50">
-                    <div className="flex items-center gap-3 mb-3">
-                       {user?.photoURL ? (
-                         <img src={user.photoURL} alt="Avatar" className="w-12 h-12 rounded-full border-2 border-white shadow-md" />
-                       ) : (
-                         <div className="w-12 h-12 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xl font-bold shadow-md">
-                           {user?.email?.[0].toUpperCase()}
-                         </div>
-                       )}
-                       <div className="flex-1 overflow-hidden">
-                          <p className="font-bold text-slate-900 truncate text-lg">{user?.displayName || 'Người dùng'}</p>
-                          <div className="flex items-center gap-1 text-xs text-slate-500 bg-white/50 inline-flex px-2 py-0.5 rounded-full border border-indigo-100 mt-1">
-                             <span className="font-semibold text-indigo-600">ID:</span> 
-                             <span className="truncate max-w-[100px]">{user?.uid}</span>
-                          </div>
-                       </div>
-                    </div>
-                  </div>
-                  
-                  <div className="p-4 space-y-4">
-                    <div className="group relative">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1">
-                        <Mail className="w-3 h-3" /> Email đăng nhập
-                      </label>
-                      <div className="text-sm text-slate-700 font-medium bg-slate-50 p-2 rounded border border-slate-100 break-all select-all">
-                        {user?.email}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1">
-                        <KeyRound className="w-3 h-3" /> Mật khẩu
-                      </label>
-                      <div className="text-sm text-slate-700 font-medium font-mono bg-slate-50 p-2 rounded border border-slate-100 flex justify-between items-center group hover:border-indigo-200 transition-colors">
-                        <span>{password || '••••••••'}</span>
-                        {!password && <span className="text-[10px] text-slate-400 italic px-2">Đã ẩn (Tải lại trang)</span>}
-                      </div>
-                      {!password && (
-                        <p className="text-[10px] text-slate-400 mt-1.5 leading-tight">
-                          * Mật khẩu chỉ hiển thị ngay sau khi đăng nhập. Nếu tải lại trang, nó sẽ bị ẩn để bảo mật.
-                        </p>
-                      )}
-                    </div>
-
-                     <div>
-                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1">
-                        <Zap className="w-3 h-3" /> Số dư Credits
-                       </label>
-                       <div className={`text-sm font-bold p-2 rounded border ${credits && credits > 0 ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
-                         {credits ?? 0} lượt sử dụng
-                       </div>
-                    </div>
-                  </div>
-                  
-                  <div className="p-3 border-t border-slate-100 bg-slate-50/50">
-                    <button
-                      onClick={handleLogout}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-transparent hover:border-red-100"
-                    >
-                      <LogOut className="w-4 h-4" /> Đăng xuất tài khoản
-                    </button>
-                  </div>
+               <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-2xl border p-4 z-50">
+                  <p className="font-bold text-slate-900 text-sm truncate mb-1">{user?.email}</p>
+                  <p className="text-xs text-slate-400 mb-4">ID: {user?.uid}</p>
+                  <button onClick={handleLogout} className="w-full flex items-center gap-2 py-2 text-sm text-red-600 font-bold hover:bg-red-50 rounded-lg px-2"><LogOut className="w-4 h-4" /> Đăng xuất</button>
                </div>
              )}
            </div>
         </div>
       </header>
 
-      {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300 relative">
-          
-          {/* TOOLBAR */}
-          <Toolbar 
-             onInsert={insertTextAtCursor}
-             onVoiceInput={handleVoiceInput}
-             isListening={isListening}
-             onOpenDrawing={() => setIsDrawingModalOpen(true)}
-             onFileUpload={handleFileUpload}
-             fileInputRef={fileInputRef}
-             onManualPreview={handleManualPreview}
-             onAIEnhance={handleAIEnhance}
-             isAiProcessing={isAiProcessing}
-             isDeducting={isDeducting}
-             onCopyFormatted={handleCopyFormatted}
-             onPrint={handlePrint}
-             onExportWord={handleExportWord}
-             onClear={handleClear}
-          />
-
-          <div className="flex-1 flex overflow-hidden">
-            {/* Editor Pane */}
-            <div 
-              className={`${activeTab === 'editor' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-1/2 border-r border-slate-200 bg-slate-50 relative group`}
-              onContextMenu={handleContextMenu}
-            >
-              <textarea
-                ref={textareaRef}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                className="flex-1 w-full p-6 resize-none focus:outline-none bg-transparent font-mono text-sm leading-relaxed text-slate-700 custom-scrollbar"
-                placeholder="Nhập nội dung vào đây..."
-              />
-              {/* Stats Bar */}
-              <div className="flex-none h-8 bg-white border-t border-slate-200 flex items-center px-4 text-xs text-slate-500 gap-4 no-print z-10">
-                 <div className="flex items-center gap-1.5"><FileText className="w-3 h-3" /><span>{wordCount} từ</span></div>
-                 <div className="w-px h-3 bg-slate-300"></div>
-                 <div>{charCount} ký tự</div>
-                 <div className="flex-1"></div>
-                 {isListening && <div className="text-red-500 animate-pulse font-medium flex items-center gap-1"><Mic className="w-3 h-3"/> Đang nghe...</div>}
-              </div>
-            </div>
-
-            {/* Preview Pane */}
-            <div 
-              className={`${activeTab === 'preview' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-1/2 bg-white overflow-hidden relative`}
-              onContextMenu={handleContextMenu}
-            >
-              {previewContent ? (
-                  <div className={`flex-1 overflow-y-auto p-8 custom-scrollbar ${credits !== null && credits <= 0 ? 'select-none' : ''}`} id="markdown-preview-scroll">
-                     <div className="max-w-3xl mx-auto">
-                        <MarkdownPreview content={previewContent} />
-                     </div>
-                  </div>
-              ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 no-print select-none">
-                      <RefreshCw className="w-16 h-16 mb-4 opacity-10" />
-                      <p className="text-center text-sm mb-2">Nhập nội dung bên trái</p>
-                      <div className="flex gap-2">
-                        <span className="px-2 py-1 bg-slate-100 rounded text-xs font-mono">Ctrl + Enter</span>
-                        <span className="text-xs self-center">để xem trước</span>
-                      </div>
-                  </div>
-              )}
-            </div>
-          </div>
-
-          {/* Mobile Tab Bar */}
-          <div className="md:hidden h-14 bg-white border-t border-slate-200 flex items-center justify-around px-4 flex-none z-10 no-print">
-             <button onClick={() => setActiveTab('editor')} className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'editor' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500'}`}>Mã nguồn</button>
-             <div className="w-px h-6 bg-slate-200 mx-2"></div>
-             <button onClick={() => setActiveTab('preview')} className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'preview' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500'}`}>Xem trước</button>
-          </div>
-      </div>
-      
-      {/* Footer Info */}
-      <footer className="h-8 bg-slate-50 border-t border-slate-200 flex items-center justify-center text-xs text-slate-500 gap-4 flex-none no-print">
-          <div className="flex items-center gap-1"><UserCheck className="w-3 h-3 text-indigo-500" /><span>Thiết kế: Duy Hạnh</span></div>
-          <div className="w-px h-3 bg-slate-300"></div>
-          <div className="flex items-center gap-1"><Phone className="w-3 h-3 text-indigo-500" /><span>0868 640 898</span></div>
-      </footer>
-
-      {/* DRAWING MODAL */}
-      <DrawingModal 
-        isOpen={isDrawingModalOpen}
-        onClose={() => setIsDrawingModalOpen(false)}
-        onSubmit={handleDrawingSubmit}
-        isProcessing={isAiProcessing}
+      <Toolbar 
+        onInsert={insertTextAtCursor} onVoiceInput={() => {}} isListening={false} 
+        onOpenDrawing={() => setIsDrawingModalOpen(true)} onFileUpload={() => {}} fileInputRef={fileInputRef}
+        onManualPreview={handleManualPreview} onAIEnhance={handleAIEnhance} isAiProcessing={isAiProcessing} isDeducting={isDeducting}
+        onCopyFormatted={handleCopyFormatted} onPrint={handlePrint} onExportWord={handleExportWord} onClear={() => setContent('')}
       />
 
-      {/* CREDIT ALERT POPUP */}
+      <main className="flex-1 flex overflow-hidden">
+        <div className={`${activeTab === 'editor' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-1/2 border-r bg-slate-50 relative`}>
+          <textarea 
+            ref={textareaRef} 
+            value={content} 
+            onChange={(e) => setContent(e.target.value)} 
+            onPaste={handlePaste}
+            className="flex-1 p-6 font-mono text-sm leading-relaxed resize-none outline-none bg-transparent" 
+            placeholder="Dán nội dung từ ChatGPT vào đây..." 
+          />
+          <div className="h-8 bg-white border-t px-4 flex items-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            {content.length} ký tự
+          </div>
+        </div>
+        <div className={`${activeTab === 'preview' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-1/2 bg-white overflow-y-auto`}>
+           <div className="p-8 max-w-3xl mx-auto w-full"><MarkdownPreview content={previewContent || content} /></div>
+        </div>
+      </main>
+
+      <DrawingModal isOpen={isDrawingModalOpen} onClose={() => setIsDrawingModalOpen(false)} onSubmit={handleDrawingSubmit} isProcessing={isAiProcessing} />
+
       {showCreditAlert && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white max-w-sm w-full rounded-2xl shadow-2xl overflow-hidden relative border border-red-100">
-             <button 
-                onClick={() => setShowCreditAlert(false)} 
-                className="absolute top-2 right-2 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
-             >
-               <X className="w-5 h-5" />
-             </button>
-             
-             <div className="p-6 text-center">
-                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <AlertTriangle className="w-8 h-8 text-red-600" />
-                </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Hết lượt sử dụng</h3>
-                <p className="text-slate-600 mb-6 text-sm leading-relaxed">
-                  Tài khoản của bạn đã hết Credits. Bạn vẫn có thể sử dụng các tính năng chỉnh sửa, nhưng <b>không thể Sao chép hoặc Xuất file</b>.
-                </p>
-                <div className="bg-slate-50 p-4 rounded-lg mb-6 text-left border border-slate-200">
-                  <div className="text-xs font-semibold text-slate-500 uppercase mb-2 tracking-wider">Liên hệ nạp thêm</div>
-                  <div className="flex items-center gap-2 mb-2 text-sm text-slate-800">
-                    <UserCheck className="w-4 h-4 text-indigo-600" />
-                    <span>Admin: Duy Hạnh</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-slate-800">
-                    <Phone className="w-4 h-4 text-indigo-600" />
-                    <span>0868 640 898</span>
-                  </div>
-                </div>
-                <Button onClick={() => setShowCreditAlert(false)} variant="primary" className="w-full justify-center">
-                  Đã hiểu
-                </Button>
-             </div>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white max-w-sm w-full rounded-2xl p-6 text-center shadow-2xl relative">
+            <button onClick={() => setShowCreditAlert(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            <AlertTriangle className="w-16 h-16 text-red-600 mx-auto mb-4" />
+            <h3 className="text-xl font-bold mb-2">Hết lượt sử dụng</h3>
+            <p className="text-slate-600 text-sm mb-6 leading-relaxed">Hành động này tốn 1 Credit. Vui lòng liên hệ Admin Duy Hạnh: <b>0868 640 898</b> để nạp thêm.</p>
+            <Button onClick={() => setShowCreditAlert(false)} className="w-full">Đã hiểu</Button>
           </div>
         </div>
       )}
