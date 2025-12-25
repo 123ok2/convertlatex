@@ -2,8 +2,8 @@
 import React from 'react';
 import { 
   Bold, Italic, Heading, List, Code, Sigma, 
-  Mic, MicOff, Calculator, Upload, 
-  Eye, Sparkles, Loader2, Copy, Printer, Download, Trash2
+  Mic, Calculator, Upload, 
+  Eye, Sparkles, Loader2, Copy, Printer, FileDown, Trash2, FileText, Plus
 } from 'lucide-react';
 import { Button } from './Button';
 
@@ -41,117 +41,89 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onClear
 }) => {
   
-  const IconButton = ({ onClick, icon, title, active = false, className = '' }: any) => (
+  // Fix: Set children to optional to resolve Property 'children' is missing error in strict environments
+  const ToolGroup = ({ children, label }: { children?: React.ReactNode, label?: string }) => (
+    <div className="flex flex-col gap-1 px-3 first:pl-0 border-r border-slate-200 last:border-0">
+      <div className="flex items-center gap-1">{children}</div>
+      {label && <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider text-center">{label}</span>}
+    </div>
+  );
+
+  const ToolButton = ({ onClick, icon, title, active = false, danger = false }: any) => (
     <button 
       onClick={onClick} 
-      className={`p-2 rounded-md transition-all hover:shadow-sm ${
+      className={`p-2 rounded-lg transition-all ${
         active 
-          ? 'bg-indigo-50 text-indigo-700' 
-          : 'text-slate-600 hover:bg-white hover:text-indigo-600'
-      } ${className}`}
+          ? 'bg-indigo-600 text-white' 
+          : danger 
+            ? 'text-slate-400 hover:text-red-600 hover:bg-red-50'
+            : 'text-slate-500 hover:text-indigo-600 hover:bg-indigo-50'
+      }`}
       title={title}
     >
-      {icon}
+      {React.cloneElement(icon, { size: 18 })}
     </button>
   );
 
-  const Separator = () => <div className="w-px h-5 bg-slate-200 mx-1 self-center"></div>;
-
   return (
-    <div className="h-14 bg-slate-50/80 backdrop-blur-sm border-b border-slate-200 flex items-center px-4 justify-between gap-4 shadow-sm z-10 overflow-x-auto no-scrollbar no-print">
+    <div className="h-20 glass border-b border-slate-200 flex items-center px-6 justify-between shadow-sm z-30 no-print flex-shrink-0">
       
-      {/* Group 1: Formatting Tools */}
-      <div className="flex items-center gap-1 bg-white/50 p-1 rounded-lg border border-slate-100 shadow-sm flex-shrink-0">
-        <IconButton onClick={() => onInsert('**', '**')} icon={<Bold className="w-4 h-4" />} title="In đậm" />
-        <IconButton onClick={() => onInsert('*', '*')} icon={<Italic className="w-4 h-4" />} title="In nghiêng" />
-        <Separator />
-        <IconButton onClick={() => onInsert('### ')} icon={<Heading className="w-4 h-4" />} title="Tiêu đề (H3)" />
-        <IconButton onClick={() => onInsert('- ')} icon={<List className="w-4 h-4" />} title="Danh sách" />
-        <Separator />
-        <IconButton onClick={() => onInsert('```\n', '\n```')} icon={<Code className="w-4 h-4" />} title="Chèn Code" />
-        <IconButton onClick={() => onInsert('$$ ', ' $$')} icon={<Sigma className="w-4 h-4" />} title="Công thức Toán (Block)" />
+      <div className="flex items-center">
+        {/* Tác vụ file */}
+        <ToolGroup label="Tệp">
+           <ToolButton onClick={onClear} icon={<Plus />} title="Tạo mới" />
+           <input type="file" ref={fileInputRef} onChange={onFileUpload} className="hidden" accept=".txt,.md" />
+           <ToolButton onClick={() => fileInputRef.current?.click()} icon={<Upload />} title="Mở tệp" />
+        </ToolGroup>
+
+        {/* Định dạng nhanh */}
+        <ToolGroup label="Định dạng">
+          <ToolButton onClick={() => onInsert('**', '**')} icon={<Bold />} title="In đậm" />
+          <ToolButton onClick={() => onInsert('*', '*')} icon={<Italic />} title="In nghiêng" />
+          <ToolButton onClick={() => onInsert('### ')} icon={<Heading />} title="Tiêu đề" />
+          <ToolButton onClick={() => onInsert('- ')} icon={<List />} title="Danh sách" />
+          <ToolButton onClick={() => onInsert('$$ ', ' $$')} icon={<Sigma />} title="Công thức Toán" />
+        </ToolGroup>
+
+        {/* Công cụ nhập liệu */}
+        <ToolGroup label="Nhập liệu">
+          <ToolButton onClick={onVoiceInput} active={isListening} icon={<Mic />} title="Giọng nói" />
+          <ToolButton onClick={onOpenDrawing} icon={<Calculator />} title="Vẽ công thức" />
+        </ToolGroup>
       </div>
 
-      {/* Group 2: Input Methods */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <IconButton 
-          onClick={onVoiceInput} 
-          active={isListening}
-          icon={isListening ? <MicOff className="w-4 h-4 animate-pulse text-red-500" /> : <Mic className="w-4 h-4" />} 
-          title={isListening ? "Dừng ghi âm" : "Nhập bằng giọng nói"} 
-        />
-        <IconButton onClick={onOpenDrawing} icon={<Calculator className="w-4 h-4" />} title="Công thức (Vẽ tay / Bàn phím MathType)" />
-        
-        <div className="relative">
-          <input 
-             type="file" 
-             ref={fileInputRef}
-             onChange={onFileUpload}
-             className="hidden" 
-             accept=".txt,.md"
-          />
-          <IconButton onClick={() => fileInputRef.current?.click()} icon={<Upload className="w-4 h-4" />} title="Tải file lên (.txt, .md)" />
+      <div className="flex items-center gap-3">
+        {/* Nhóm AI chính */}
+        <div className="flex items-center bg-indigo-50 p-1 rounded-xl border border-indigo-100 shadow-inner">
+           <Button 
+              variant="ghost" 
+              onClick={onManualPreview}
+              className="!py-2 !px-4 text-sm font-semibold text-indigo-700 hover:bg-white hover:shadow-sm transition-all"
+           >
+              <Eye size={18} className="mr-2" /> Xem trước
+           </Button>
+           <Button 
+              variant="primary"
+              onClick={onAIEnhance}
+              disabled={isAiProcessing || isDeducting}
+              className="!py-2 !px-4 text-sm font-semibold shadow-indigo-200"
+           >
+              {isAiProcessing ? <Loader2 size={18} className="animate-spin mr-2" /> : <Sparkles size={18} className="mr-2" />}
+              Tối ưu AI
+           </Button>
+        </div>
+
+        <div className="h-8 w-px bg-slate-200 mx-2"></div>
+
+        {/* Nhóm Xuất bản */}
+        <div className="flex items-center gap-1">
+          <ToolButton onClick={onCopyFormatted} icon={<Copy />} title="Sao chép (-1 Credit)" />
+          <ToolButton onClick={onPrint} icon={<Printer />} title="In PDF (-1 Credit)" />
+          <ToolButton onClick={onExportWord} icon={<FileDown />} title="Tải Word (-1 Credit)" />
+          <ToolButton onClick={onClear} icon={<Trash2 />} title="Xóa tất cả" danger />
         </div>
       </div>
 
-      <Separator />
-
-      {/* Group 3: Core Actions */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <Button 
-            variant="secondary" 
-            onClick={onManualPreview}
-            className="!py-1.5 !px-3 text-sm font-medium border-slate-200 text-slate-700 hover:text-indigo-600"
-            title="Xem trước miễn phí"
-        >
-            <Eye className="w-4 h-4 sm:mr-2" />
-            <span className="hidden sm:inline">Xem trước</span>
-        </Button>
-
-        <Button 
-          variant="primary"
-          onClick={onAIEnhance}
-          disabled={isAiProcessing || isDeducting}
-          className="!py-1.5 !px-3 text-sm font-medium shadow-indigo-200"
-          title="Tối ưu hóa nội dung (-1 Credit)"
-        >
-          {isAiProcessing ? (
-            <Loader2 className="w-4 h-4 sm:mr-2 animate-spin" />
-          ) : (
-            <Sparkles className="w-4 h-4 sm:mr-2" />
-          )}
-          <span className="hidden sm:inline">Tối ưu hóa</span>
-        </Button>
-      </div>
-
-      <Separator />
-
-      {/* Group 4: Export Tools */}
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <IconButton 
-          onClick={onCopyFormatted} 
-          icon={<Copy className="w-4 h-4" />} 
-          title="Sao chép định dạng (-1 Credit)" 
-          className={isDeducting ? 'opacity-50 cursor-wait' : ''}
-        />
-        <IconButton 
-          onClick={onPrint} 
-          icon={<Printer className="w-4 h-4" />} 
-          title="In / Xuất PDF (-1 Credit)" 
-        />
-        <IconButton 
-          onClick={onExportWord} 
-          icon={<Download className="w-4 h-4" />} 
-          title="Tải file Word (-1 Credit)" 
-        />
-        <Separator />
-        <IconButton 
-          onClick={onClear} 
-          icon={<Trash2 className="w-4 h-4" />} 
-          className="text-red-500 hover:bg-red-50 hover:text-red-600"
-          title="Xóa toàn bộ" 
-        />
-      </div>
     </div>
   );
 };
