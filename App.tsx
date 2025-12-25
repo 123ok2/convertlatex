@@ -13,8 +13,7 @@ import {
   signOut,
   User,
   setPersistence,
-  browserLocalPersistence,
-  browserSessionPersistence
+  browserLocalPersistence
 } from 'firebase/auth';
 import { 
   doc, 
@@ -34,12 +33,38 @@ import {
   Info,
   X,
   User as UserIcon,
-  ChevronDown
+  ChevronDown,
+  Fingerprint,
+  Monitor
 } from 'lucide-react';
+
+// Simple Fingerprinting Helper
+const getBrowserFingerprint = () => {
+  const { userAgent, language } = navigator;
+  const { width, height, colorDepth } = window.screen;
+  const components = [userAgent, language, width, height, colorDepth];
+  
+  // Create a simple hash-like string
+  const raw = components.join('|');
+  let hash = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const char = raw.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  
+  // Use localStorage to maintain consistency if browser traits change slightly
+  let persistentId = localStorage.getItem('llm_pro_guest_token');
+  if (!persistentId) {
+    persistentId = 'guest_' + Math.abs(hash).toString(36) + Math.random().toString(36).substring(2, 7);
+    localStorage.setItem('llm_pro_guest_token', persistentId);
+  }
+  return persistentId;
+};
 
 export default function App() {
   // Auth State
-  const [user, setUser] = useState<User | any | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [credits, setCredits] = useState<number | null>(null);
   const [isLoginLoading, setIsLoginLoading] = useState(false);
@@ -68,38 +93,49 @@ export default function App() {
     }
   }, [toast]);
 
+  // Initial Auth & Guest check
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
-        await checkUserSubscription(currentUser);
+        await syncUserCredits(currentUser.uid, currentUser.email || 'user@llm.pro');
       } else {
-        setUser(null);
-        setCredits(null);
-        setAuthLoading(false);
+        // Check if previously a guest in this session
+        const savedGuest = sessionStorage.getItem('llm_pro_active_guest');
+        if (savedGuest) {
+          handleGuestLogin(true);
+        } else {
+          setUser(null);
+          setCredits(null);
+          setAuthLoading(false);
+        }
       }
     });
     return () => unsubscribe();
   }, []);
 
-  const checkUserSubscription = async (currentUser: User) => {
+  const syncUserCredits = async (id: string, email: string, isGuest: boolean = false) => {
     try {
-      const userRef = doc(db, "users", currentUser.uid);
+      const collectionName = isGuest ? "guests" : "users";
+      const userRef = doc(db, collectionName, id);
       const userSnap = await getDoc(userRef);
+      
       if (userSnap.exists()) {
         const data = userSnap.data();
         setCredits(data.credits ?? 0);
       } else {
         const initialCredits = 10;
         await setDoc(userRef, {
-          email: currentUser.email,
+          email: email,
           activatedAt: Timestamp.now(),
-          credits: initialCredits
+          credits: initialCredits,
+          isGuest
         });
         setCredits(initialCredits);
       }
     } catch (error) {
-      console.error("Auth error:", error);
+      console.error("Credit sync error:", error);
+      setToast({ message: "Lỗi đồng bộ dữ liệu!", type: 'error' });
     } finally {
       setAuthLoading(false);
     }
@@ -114,11 +150,8 @@ export default function App() {
 
     setIsDeducting(true);
     try {
-      if (user.uid === 'guest') {
-        setCredits(prev => (prev !== null ? prev - 1 : 0));
-        return true;
-      }
-      const userRef = doc(db, "users", user.uid);
+      const collectionName = user.isGuest ? "guests" : "users";
+      const userRef = doc(db, collectionName, user.uid);
       await updateDoc(userRef, { credits: increment(-1) });
       setCredits(prev => (prev !== null ? prev - 1 : 0));
       return true;
@@ -134,6 +167,7 @@ export default function App() {
     e.preventDefault();
     setIsLoginLoading(true);
     try {
+      sessionStorage.removeItem('llm_pro_active_guest');
       await setPersistence(auth, browserLocalPersistence);
       if (isRegistering) await createUserWithEmailAndPassword(auth, email, password);
       else await signInWithEmailAndPassword(auth, email, password);
@@ -144,10 +178,32 @@ export default function App() {
     }
   };
 
-  const handleGuestLogin = () => {
-    setUser({ uid: 'guest', email: 'khach@viewer.pro', displayName: 'Khách' } as any);
-    setCredits(50);
-    setToast({ message: "Đã vào với tư cách Khách", type: 'info' });
+  const handleGuestLogin = async (silent = false) => {
+    if (!silent) setAuthLoading(true);
+    const guestId = getBrowserFingerprint();
+    const guestUser = { 
+      uid: guestId, 
+      email: 'khach_anonym@device.id', 
+      displayName: 'Khách',
+      isGuest: true 
+    };
+    
+    setUser(guestUser);
+    sessionStorage.setItem('llm_pro_active_guest', 'true');
+    await syncUserCredits(guestId, guestUser.email, true);
+    
+    if (!silent) setToast({ message: "Đã xác thực thiết bị Khách", type: 'info' });
+  };
+
+  const handleLogout = async () => {
+    sessionStorage.removeItem('llm_pro_active_guest');
+    if (user?.isGuest) {
+      setUser(null);
+      setCredits(null);
+    } else {
+      await signOut(auth);
+    }
+    setShowProfileMenu(false);
   };
 
   const handleAIEnhance = useCallback(async () => {
@@ -236,7 +292,7 @@ export default function App() {
   if (authLoading) return (
     <div className="h-screen flex flex-col items-center justify-center bg-slate-50">
       <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-      <span className="text-slate-500 font-medium">Đang khởi tạo hệ thống...</span>
+      <span className="text-slate-500 font-medium">Đang kiểm tra bảo mật...</span>
     </div>
   );
 
@@ -247,26 +303,31 @@ export default function App() {
           <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
           <Bot className="w-16 h-16 text-white mx-auto mb-4 relative z-10" />
           <h1 className="text-2xl font-extrabold text-white mb-1 relative z-10">LLM Markdown Pro</h1>
-          <p className="text-indigo-100 text-sm opacity-80 relative z-10">Chuyển đổi tài liệu AI chuyên nghiệp</p>
+          <p className="text-indigo-100 text-sm opacity-80 relative z-10">Giải pháp xử lý tài liệu AI số 1</p>
         </div>
         <div className="p-10">
           <form onSubmit={handleEmailAuth} className="space-y-4">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all outline-none" placeholder="Địa chỉ Email" required />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all outline-none" placeholder="Email đăng nhập" required />
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all outline-none" placeholder="Mật khẩu" required />
             <Button type="submit" disabled={isLoginLoading} className="w-full py-4 text-lg font-bold rounded-xl shadow-indigo-200 shadow-xl">
-              {isLoginLoading ? <Loader2 className="animate-spin" /> : (isRegistering ? 'Tham gia ngay' : 'Đăng nhập')}
+              {isLoginLoading ? <Loader2 className="animate-spin" /> : (isRegistering ? 'Đăng ký tài khoản' : 'Đăng nhập hệ thống')}
             </Button>
           </form>
           <div className="mt-8 flex flex-col items-center gap-4">
             <button onClick={() => setIsRegistering(!isRegistering)} className="text-sm font-semibold text-indigo-600 hover:text-indigo-700">
-              {isRegistering ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký ngay'}
+              {isRegistering ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký tại đây'}
             </button>
             <div className="w-full flex items-center gap-3">
               <div className="flex-1 h-px bg-slate-100"></div>
-              <span className="text-[10px] text-slate-300 uppercase font-bold tracking-widest">Hoặc trải nghiệm</span>
+              <span className="text-[10px] text-slate-300 uppercase font-bold tracking-widest">Bảo mật thiết bị</span>
               <div className="flex-1 h-px bg-slate-100"></div>
             </div>
-            <button onClick={handleGuestLogin} className="text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors">Vào nhanh với tư cách Khách</button>
+            <div className="text-center space-y-2">
+              <button onClick={() => handleGuestLogin()} className="text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors flex items-center gap-2 mx-auto">
+                <Monitor size={14} /> Vào nhanh (Dành cho 1 thiết bị)
+              </button>
+              <p className="text-[10px] text-slate-400 italic">Lượt dùng Khách sẽ được gắn chặt với trình duyệt này.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -298,8 +359,10 @@ export default function App() {
           <div>
             <h2 className="font-extrabold text-slate-900 leading-tight">Markdown Pro</h2>
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-green-500"></span>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hệ thống sẵn sàng</span>
+              <span className={`w-2 h-2 rounded-full ${user.isGuest ? 'bg-yellow-400' : 'bg-green-500'}`}></span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                {user.isGuest ? 'Chế độ Khách' : 'Đã đăng nhập'}
+              </span>
             </div>
           </div>
         </div>
@@ -318,22 +381,33 @@ export default function App() {
            <div className="relative">
              <button 
                onClick={() => setShowProfileMenu(!showProfileMenu)} 
-               className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 hover:bg-white transition-all"
+               className={`flex items-center gap-2 p-1.5 rounded-2xl border transition-all ${user.isGuest ? 'bg-slate-50 border-slate-200' : 'bg-indigo-50 border-indigo-100'}`}
              >
-               <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-lg">{user?.email?.[0].toUpperCase()}</div>
+               <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg text-white ${user.isGuest ? 'bg-slate-400' : 'bg-indigo-600'}`}>
+                 {user.isGuest ? <Monitor size={20} /> : user.email?.[0].toUpperCase()}
+               </div>
                <ChevronDown size={16} className="text-slate-400 mr-2" />
              </button>
              {showProfileMenu && (
-               <div className="absolute right-0 top-full mt-3 w-72 bg-white rounded-3xl shadow-2xl border border-slate-100 p-6 z-50 animate-in zoom-in-95 duration-200">
+               <div className="absolute right-0 top-full mt-3 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 p-6 z-50 animate-in zoom-in-95 duration-200">
                   <div className="flex items-center gap-4 mb-6">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400"><UserIcon size={24} /></div>
+                    <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 shadow-inner">
+                      {user.isGuest ? <Monitor size={24} /> : <UserIcon size={24} />}
+                    </div>
                     <div className="overflow-hidden">
-                      <p className="font-bold text-slate-900 truncate">{user?.email}</p>
-                      <p className="text-xs text-slate-400">Gói cá nhân</p>
+                      <p className="font-bold text-slate-900 truncate text-sm leading-tight">
+                        {user.isGuest ? 'Thiết bị Khách' : user.email}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-mono mt-0.5 truncate flex items-center gap-1">
+                        <Fingerprint size={10} className="text-slate-300" /> {user.isGuest ? 'Device ID:' : 'User ID:'} {user?.uid}
+                      </p>
+                      <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${user.isGuest ? 'text-orange-500' : 'text-indigo-500'}`}>
+                        {user.isGuest ? 'Gói dùng thử' : 'Gói cá nhân'}
+                      </p>
                     </div>
                   </div>
-                  <button onClick={() => signOut(auth)} className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 text-red-600 font-bold rounded-2xl hover:bg-red-100 transition-colors">
-                    <LogOut size={18} /> Đăng xuất
+                  <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 text-red-600 font-bold rounded-2xl hover:bg-red-100 transition-colors">
+                    <LogOut size={18} /> {user.isGuest ? 'Thoát chế độ Khách' : 'Đăng xuất'}
                   </button>
                </div>
              )}
