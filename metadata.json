@@ -1,5 +1,6 @@
+
 {
-  "name": "convert  latex",
+  "name": "DuyHanhMath",
   "description": "Một ứng dụng chuyên dụng để xem, chỉnh sửa và hiển thị nội dung Markdown được tạo bởi các mô hình ngôn ngữ lớn như Gemini, ChatGPT, Claude.",
   "requestFramePermissions": []
 }
