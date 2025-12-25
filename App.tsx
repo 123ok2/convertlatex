@@ -146,7 +146,7 @@ export default function App() {
 
   const handleGuestLogin = () => {
     setUser({ uid: 'guest', email: 'khach@viewer.pro', displayName: 'Khách' } as any);
-    setCredits(50);
+    setCredits(10);
     setToast({ message: "Đã vào với tư cách Khách", type: 'info' });
   };
 
