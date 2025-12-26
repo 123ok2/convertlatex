@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { Button } from './components/Button';
@@ -42,6 +43,7 @@ import {
 
 /**
  * HỆ THỐNG ĐỊNH DANH THIẾT BỊ (DEVICE FINGERPRINTING)
+ * Tạo ID duy nhất dựa trên phần cứng và trình duyệt để quản lý Credit khách.
  */
 const generateFingerprint = () => {
   const { userAgent, language, hardwareConcurrency, deviceMemory } = navigator as any;
@@ -74,6 +76,30 @@ const generateFingerprint = () => {
   return 'dev-' + Math.abs(hash).toString(36);
 };
 
+/**
+ * Tự động chuyển đổi các ký tự toán học thô sang LaTeX
+ * Xử lý tích phân: ∫ab -> \int_{a}^{b}
+ */
+const autoFormatMath = (text: string): string => {
+  // 1. Nhận diện cấu trúc tích phân: ∫ + cận dưới + cận trên + biểu thức
+  // Regex này bắt cụm: ∫ab hoặc ∫_{a}^{b}
+  let processed = text.replace(/∫(\w)(\w)\s?([^=\n]+)/g, (match, lower, upper, expr) => {
+    return `\\int_{${lower}}^{${upper}} ${expr.trim()}`;
+  });
+
+  // 2. Nếu dòng đó chứa \int nhưng chưa có dấu bao $$ thì tự động thêm
+  // Chỉ áp dụng cho các dòng bắt đầu bằng dấu tích phân sau khi đã convert
+  const lines = processed.split('\n');
+  const formattedLines = lines.map(line => {
+    if (line.includes('\\int') && !line.includes('$$')) {
+      return `$$ ${line.trim()} $$`;
+    }
+    return line;
+  });
+
+  return formattedLines.join('\n');
+};
+
 export default function App() {
   const [user, setUser] = useState<any | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -83,10 +109,12 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   
+  // Modals for errors/alerts
   const [showConfigError, setShowConfigError] = useState(false);
   const [showPermissionError, setShowPermissionError] = useState(false);
   const [showCreditAlert, setShowCreditAlert] = useState(false);
 
+  // App Content State
   const [content, setContent] = useState<string>('');
   const [previewContent, setPreviewContent] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
@@ -106,13 +134,14 @@ export default function App() {
     }
   }, [toast]);
 
+  // Auth Observer & Credit Sync
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       const fingerprint = generateFingerprint();
       
       if (currentUser) {
         const isGuest = currentUser.isAnonymous;
-        // Document ID: Nếu là khách dùng fingerprint, nếu là member dùng UID thật nhưng vẫn check fingerprint bên trong
+        // Document ID cho khách là vân tay thiết bị để chống reset credit
         const docId = isGuest ? fingerprint : currentUser.uid;
 
         setUser({
@@ -123,7 +152,7 @@ export default function App() {
           displayEmail: isGuest ? "Chế độ dùng thử" : currentUser.email
         });
 
-        await syncUserCredits(docId, isGuest, fingerprint);
+        await syncUserCredits(docId, isGuest);
       } else {
         setUser(null);
         setCredits(null);
@@ -133,10 +162,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  /**
-   * LOGIC ĐỒNG BỘ CREDIT & CHỐNG SPAM
-   */
-  const syncUserCredits = async (id: string, isGuest: boolean, fingerprint: string) => {
+  const syncUserCredits = async (id: string, isGuest: boolean) => {
     try {
       const collectionName = isGuest ? "guests" : "users";
       const userRef = doc(db, collectionName, id);
@@ -145,45 +171,22 @@ export default function App() {
       if (snap.exists()) {
         setCredits(snap.data().credits ?? 0);
       } else {
-        // KIỂM TRA THIẾT BỊ ĐÃ TỒN TẠI TRONG HỆ THỐNG CHƯA
-        // Ta dùng một collection 'devices' để lưu vết mọi thiết bị đã từng nhận quà
-        const deviceRef = doc(db, "devices", fingerprint);
-        const deviceSnap = await getDoc(deviceRef);
-        
-        let initialCredits = 0;
-        const alreadyClaimed = deviceSnap.exists();
-
-        if (!alreadyClaimed) {
-          // Nếu thiết bị sạch (chưa từng dùng thử hoặc đăng ký)
-          initialCredits = isGuest ? 10 : 20;
-          
-          // Đánh dấu thiết bị đã nhận quà
-          await setDoc(deviceRef, {
-            firstUserId: id,
-            claimedAt: Timestamp.now(),
-            type: isGuest ? 'guest' : 'member'
-          });
-        } else {
-          // Nếu thiết bị đã dùng rồi, đăng ký mới cũng cho 0 credit
-          initialCredits = 0;
-          setToast({ 
-            message: "Thiết bị này đã từng nhận Credit miễn phí trước đó!", 
-            type: 'error' 
-          });
-        }
-
+        // Cấp 10 credit cho thiết bị khách mới, 20 cho tài khoản đăng ký
+        const initialCredits = isGuest ? 10 : 20;
         await setDoc(userRef, {
-          email: isGuest ? `guest-${id}@device.local` : (auth.currentUser?.email || email),
+          email: isGuest ? `guest-${id}@device.local` : email,
           credits: initialCredits,
           activatedAt: Timestamp.now(),
-          deviceId: fingerprint,
+          deviceId: id,
           isGuest
         });
         setCredits(initialCredits);
       }
     } catch (error: any) {
       console.error("Firestore sync error:", error);
-      if (error.code === 'permission-denied') setShowPermissionError(true);
+      if (error.code === 'permission-denied' || error.message?.includes('permissions')) {
+        setShowPermissionError(true);
+      }
     } finally {
       setAuthLoading(false);
     }
@@ -232,12 +235,13 @@ export default function App() {
       if (isRegistering) await createUserWithEmailAndPassword(auth, email, password);
       else await signInWithEmailAndPassword(auth, email, password);
     } catch (error: any) {
-      setToast({ message: "Lỗi: " + error.message, type: 'error' });
+      setToast({ message: error.message, type: 'error' });
     } finally {
       setIsLoginLoading(false);
     }
   };
 
+  // Fix: Added handleLogout function to fix the reference error on line 380
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -248,6 +252,7 @@ export default function App() {
     }
   };
 
+  // Fix: Implemented file upload handler
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -269,12 +274,13 @@ export default function App() {
     setIsAiProcessing(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      // Upgraded to gemini-3-pro-preview for high-quality mathematical and STEM formatting
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
         contents: content,
         config: { 
           systemInstruction: "Bạn là chuyên gia định dạng Markdown và LaTeX. Hãy làm đẹp nội dung toán học và bảng biểu. Đảm bảo mọi công thức phức tạp được trình bày chuẩn xác trong block $$ hoặc inline $. Trả về Markdown thuần.",
-          thinkingConfig: { thinkingBudget: 0 }
+          thinkingConfig: { thinkingBudget: 0 } // Disabling thinking for formatting tasks to reduce latency
         }
       });
       if (response.text) {
@@ -305,6 +311,7 @@ export default function App() {
     }, 0);
   }, []);
 
+  // Fix: Implemented formula recognition from drawing or direct LaTeX input
   const handleDrawingSubmit = async (data: string) => {
     if (data.startsWith('LATEX_RAW:')) {
       const latex = data.replace('LATEX_RAW:', '');
@@ -317,10 +324,13 @@ export default function App() {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const base64Data = data.split(',')[1];
           const imagePart = {
-            inlineData: { mimeType: 'image/png', data: base64Data },
+            inlineData: {
+              mimeType: 'image/png',
+              data: base64Data,
+            },
           };
           const textPart = {
-            text: "Convert this handwritten mathematical, physical or chemical formula into standard LaTeX. Return ONLY the LaTeX string without delimiters like $ or $$."
+            text: "Convert this handwritten mathematical, physical or chemical formula into standard LaTeX. Return ONLY the LaTeX string without delimiters like $ or $$. If there are multiple lines, separate them with double newlines."
           };
           const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
@@ -355,7 +365,7 @@ export default function App() {
           <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
           <Bot className="w-16 h-16 text-white mx-auto mb-4 relative z-10" />
           <h1 className="text-2xl font-extrabold text-white mb-1 relative z-10">LLM Markdown Pro</h1>
-          <p className="text-indigo-100 text-sm opacity-80 relative z-10">Mỗi thiết bị nhận 20 Credits khi đăng ký</p>
+          <p className="text-indigo-100 text-sm opacity-80 relative z-10">Chuyển đổi tài liệu AI nâng cao</p>
         </div>
         <div className="p-10">
           <form onSubmit={handleEmailAuth} className="space-y-4">
@@ -371,34 +381,52 @@ export default function App() {
             </button>
             <div className="w-full flex items-center gap-3">
               <div className="flex-1 h-px bg-slate-100"></div>
-              <span className="text-[10px] text-slate-300 uppercase font-bold tracking-widest">Dùng thử nhanh</span>
+              <span className="text-[10px] text-slate-300 uppercase font-bold tracking-widest">Dùng thử miễn phí</span>
               <div className="flex-1 h-px bg-slate-100"></div>
             </div>
             <button onClick={handleGuestLogin} className="text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors flex items-center gap-2 group">
               <Monitor size={14} className="group-hover:scale-110 transition-transform" /> 
-              Vào nhanh bằng ID Thiết bị (10 Credit)
+              Xác thực ID Thiết bị (10 Credit)
             </button>
           </div>
         </div>
       </div>
+      
+      {/* ERROR MODAL: Firebase Config */}
+      {showConfigError && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+          <div className="bg-white max-w-lg w-full rounded-[32px] overflow-hidden shadow-2xl">
+            <div className="bg-red-50 p-8 border-b border-red-100 flex items-center gap-4">
+              <ShieldAlert className="text-red-500" size={32} />
+              <h3 className="text-xl font-black text-slate-900">Auth chưa kích hoạt</h3>
+            </div>
+            <div className="p-8 space-y-4">
+              <p className="text-slate-600 text-sm">Admin cần vào <b>Firebase Console > Authentication > Sign-in method</b> và bật <b>Anonymous</b>.</p>
+              <Button onClick={() => setShowConfigError(false)} className="w-full py-4 rounded-2xl">Tôi đã hiểu</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
+      {/* Toast */}
       {toast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 duration-300">
-          <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl shadow-2xl border ${
-            toast.type === 'error' ? 'bg-white border-red-200 text-red-600' : 'bg-white border-indigo-100 text-indigo-700'
+          <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl shadow-2xl border glass ${
+            toast.type === 'success' ? 'border-green-100 text-green-700' : 'border-indigo-100 text-indigo-700'
           }`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${toast.type === 'error' ? 'bg-red-50' : 'bg-indigo-50'}`}>
-              {toast.type === 'success' ? <CheckCircle2 size={18} /> : (toast.type === 'error' ? <AlertTriangle size={18} /> : <Info size={18} />)}
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${toast.type === 'success' ? 'bg-green-100' : 'bg-indigo-100'}`}>
+              {toast.type === 'success' ? <CheckCircle2 size={18} /> : <Info size={18} />}
             </div>
             <span className="font-bold text-sm tracking-tight">{toast.message}</span>
           </div>
         </div>
       )}
 
+      {/* Header */}
       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 flex items-center justify-between z-40 no-print flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200">
@@ -455,7 +483,7 @@ export default function App() {
 
       <Toolbar 
         onInsert={insertTextAtCursor} 
-        onVoiceInput={() => { setToast({ message: "Tính năng đang phát triển", type: 'info' }) }} 
+        onVoiceInput={() => { setToast({ message: "Tính năng nhập giọng nói đang phát triển", type: 'info' }) }} 
         isListening={false} 
         onOpenDrawing={() => setIsDrawingModalOpen(true)} 
         onFileUpload={handleFileUpload} 
@@ -480,14 +508,41 @@ export default function App() {
              link.href = URL.createObjectURL(blob);
              link.download = `Doc_${Date.now()}.doc`;
              link.click();
+             setToast({ message: "📂 Đã xuất file Word", type: 'success' });
           }
         }} 
-        onClear={() => { if (confirm('Xóa toàn bộ nội dung?')) setContent(''); }}
+        onClear={() => {
+          if (confirm('Bạn có chắc chắn muốn xóa toàn bộ nội dung?')) {
+            setContent('');
+            setPreviewContent('');
+          }
+        }}
       />
 
       <main className="flex-1 flex overflow-hidden">
         <div className={`flex flex-col flex-1 border-r border-slate-200 bg-slate-50/50 transition-all ${activeTab === 'preview' ? 'hidden md:flex' : 'flex'}`}>
-          <textarea ref={textareaRef} value={content} onChange={(e) => setContent(e.target.value)} className="flex-1 p-8 mono text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800" placeholder="Dán nội dung vào đây..." />
+// Trong file App.tsx của bạn
+<textarea 
+  ref={textareaRef} 
+  value={content} 
+  onChange={(e) => {
+    const rawValue = e.target.value;
+    
+    // Nếu người dùng vừa dán hoặc gõ ký tự tích phân '∫'
+    if (rawValue.includes('∫')) {
+      const converted = autoFormatMath(rawValue);
+      setContent(converted);
+      // Cập nhật cả preview để hiển thị toán học ngay lập tức
+      setPreviewContent(converted);
+    } else {
+      setContent(rawValue);
+      // Đồng bộ preview cho các nội dung văn bản thường
+      setPreviewContent(rawValue);
+    }
+  }} 
+  className="flex-1 p-8 mono text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800 placeholder:text-slate-300" 
+  placeholder="Dán nội dung từ ChatGPT vào đây..." 
+/>
         </div>
         <div className={`flex flex-col flex-1 bg-white overflow-y-auto custom-scrollbar transition-all ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
            <div className="flex-1 py-12 px-8 md:px-16 max-w-4xl mx-auto w-full">
@@ -496,35 +551,49 @@ export default function App() {
         </div>
       </main>
 
-      <DrawingModal isOpen={isDrawingModalOpen} onClose={() => setIsDrawingModalOpen(false)} onSubmit={handleDrawingSubmit} isProcessing={isAiProcessing} />
+      <DrawingModal 
+        isOpen={isDrawingModalOpen} 
+        onClose={() => setIsDrawingModalOpen(false)} 
+        onSubmit={handleDrawingSubmit} 
+        isProcessing={isAiProcessing} 
+      />
 
+      {/* ERROR MODAL: Firestore Permissions */}
       {showPermissionError && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
           <div className="bg-white max-w-2xl w-full rounded-[32px] overflow-hidden shadow-2xl">
-            <div className="bg-amber-50 p-8 flex items-center gap-4 border-b border-amber-100">
-              <Lock size={32} className="text-amber-600" />
+            <div className="bg-amber-50 p-8 flex items-center gap-4 border-b border-amber-100 text-amber-600">
+              <Lock size={32} />
               <h3 className="text-2xl font-black text-slate-900">Lỗi phân quyền Firestore</h3>
             </div>
             <div className="p-8 space-y-6">
-              <p className="text-slate-600 text-sm">Cần bổ sung Collection <b>'devices'</b> vào Security Rules:</p>
-              <pre className="bg-slate-900 text-indigo-300 p-6 rounded-2xl text-[11px] font-mono overflow-x-auto">
-{`match /devices/{deviceId} {
-  allow read, write: if request.auth != null;
+              <p className="text-slate-600 text-sm leading-relaxed">Admin cần cập nhật <b>Security Rules</b> trong Firebase Console:</p>
+              <div className="relative">
+                <pre className="bg-slate-900 text-indigo-300 p-6 rounded-2xl text-[11px] font-mono overflow-x-auto">
+{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} { allow read, write: if request.auth != null && request.auth.uid == userId; }
+    match /guests/{fingerprintId} { allow read, write: if request.auth != null; }
+  }
 }`}
-              </pre>
-              <Button onClick={() => setShowPermissionError(false)} className="w-full py-4 rounded-2xl">Đã cập nhật</Button>
+                </pre>
+                <button onClick={() => { navigator.clipboard.writeText(`rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /users/{userId} {\n      allow read, write: if request.auth != null && request.auth.uid == userId;\n    }\n    match /guests/{fingerprintId} {\n      allow read, write: if request.auth != null;\n    }\n  }\n}`); setToast({ message: "Đã sao chép Rules", type: 'success' }); }} className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white"><CopyIcon size={16} /></button>
+              </div>
+              <Button onClick={() => setShowPermissionError(false)} className="w-full py-4 rounded-2xl">Tôi đã cập nhật Rules</Button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Credit Alert */}
       {showCreditAlert && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4">
-          <div className="bg-white max-sm w-full rounded-[32px] p-10 text-center shadow-2xl">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 animate-in fade-in duration-300">
+          <div className="bg-white max-sm w-full rounded-[32px] p-10 text-center shadow-2xl border border-white">
             <AlertTriangle className="text-red-500 mx-auto mb-6" size={40} />
-            <h3 className="text-2xl font-black text-slate-900 mb-2">Hết lượt sử dụng</h3>
-            <p className="text-slate-500 text-sm mb-8">Vui lòng liên hệ Admin để nạp thêm Credit. <br/><span className="font-bold text-slate-900">Zalo: 0868.640.898</span></p>
-            <Button onClick={() => setShowCreditAlert(false)} className="w-full py-4 rounded-2xl">Đóng</Button>
+            <h3 className="text-2xl font-black text-slate-900 mb-2">Hết lượt dùng thử</h3>
+            <p className="text-slate-500 text-sm mb-8 px-2">ID thiết bị của bạn đã hết 10 lượt dùng miễn phí. <br/><span className="font-bold text-slate-900">Zalo Admin: 0868.640.898</span></p>
+            <Button onClick={() => setShowCreditAlert(false)} className="w-full py-4 text-lg font-bold rounded-2xl">Tôi đã hiểu</Button>
           </div>
         </div>
       )}
