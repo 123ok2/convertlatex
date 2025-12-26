@@ -75,20 +75,25 @@ const generateFingerprint = () => {
 };
 
 /**
- * CHỨC NĂNG TỰ ĐỘNG CHUYỂN ĐỔI TOÁN HỌC KHÔNG CẦN AI
- * Xử lý: ∫ab -> \int_{a}^{b} và đóng gói trong $$
+ * BỘ LỌC TOÁN HỌC TỰ ĐỘNG (KHÔNG CẦN AI)
+ * Hỗ trợ Sách giáo khoa 2018: Tích phân, Căn thức, Vectơ, Góc.
  */
 const autoFormatMath = (text: string): string => {
-  // 1. Regex nhận diện cấu trúc tích phân gõ nhanh (ví dụ: ∫ab f(x)dx)
-  // Giải thích: Tìm ∫ theo sau bởi 2 ký tự (cận), sau đó là biểu thức cho đến dấu xuống dòng hoặc dấu =
-  let processed = text.replace(/∫(\w)(\w)\s?([^=\n]+)/g, (match, lower, upper, expr) => {
-    return `\\int_{${lower}}^{${upper}} ${expr.trim()}`;
-  });
-
-  // 2. Tự động bao quanh bằng $$ nếu dòng đó chứa lệnh tích phân mà chưa có định dạng LaTeX
-  const lines = processed.split('\n');
+  let p = text;
+  // 1. Tích phân: ∫ab -> \int_{a}^{b}
+  p = p.replace(/∫(\w)(\w)\s?([^=\n]+)/g, "\\int_{${1}}^{${2}} $3");
+  // 2. Căn thức: √x hoặc √(x+1) -> \sqrt{x}
+  p = p.replace(/√(\w)/g, "\\sqrt{$1}").replace(/√\(([^)]+)\)/g, "\\sqrt{$1}");
+  // 3. Vectơ: vtAB -> \overrightarrow{AB}
+  p = p.replace(/vt([A-Z]{1,2})/g, "\\overrightarrow{$1}");
+  // 4. Góc: gABC -> \widehat{ABC}
+  p = p.replace(/g([A-Z]{3})/g, "\\widehat{$1}");
+  
+  // Tự động bao quanh bằng $$ nếu chứa ký hiệu toán học đặc biệt nhưng chưa có định dạng
+  const lines = p.split('\n');
   const formattedLines = lines.map(line => {
-    if (line.includes('\\int') && !line.includes('$$') && line.trim().length > 0) {
+    const hasMath = /\\int|\\sqrt|\\overrightarrow|\\widehat|\^|_/.test(line);
+    if (hasMath && !line.includes('$$') && line.trim().length > 0) {
       return `$$ ${line.trim()} $$`;
     }
     return line;
@@ -128,6 +133,62 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  // LOGIC TRỪ CREDIT
+  const deductCredit = async (): Promise<boolean> => {
+    if (!user || credits === null) return false;
+    if (credits <= 0) {
+      setShowCreditAlert(true);
+      return false;
+    }
+    setIsDeducting(true);
+    try {
+      const collectionName = user.isGuest ? "guests" : "users";
+      const userRef = doc(db, collectionName, user.uid);
+      await updateDoc(userRef, { credits: increment(-1) });
+      setCredits(prev => (prev !== null ? prev - 1 : 0));
+      return true;
+    } catch (error: any) {
+      setToast({ message: "Lỗi kết nối máy chủ!", type: 'error' });
+      return false;
+    } finally {
+      setIsDeducting(false);
+    }
+  };
+
+  // HỆ THỐNG BẢO VỆ CHỐNG COPY VÀ TRỪ CREDIT KHI VI PHẠM
+  useEffect(() => {
+    const handleIllegalCopy = async (e: ClipboardEvent | KeyboardEvent) => {
+      const isCopyKey = (e instanceof KeyboardEvent && (e.ctrlKey || e.metaKey) && e.key === 'c');
+      const isCopyEvent = (e.type === 'copy');
+
+      if (isCopyKey || isCopyEvent) {
+        const selection = window.getSelection()?.toString();
+        // Nếu bôi đen trên 5 ký tự thì chặn và trừ credit
+        if (selection && selection.length > 5) {
+          e.preventDefault();
+          const success = await deductCredit();
+          if (success) {
+            setToast({ message: "Copy bôi đen bị trừ 1 credit!", type: 'error' });
+            alert("Hành động copy bị hạn chế để bảo vệ nội dung. Hệ thống đã trừ 1 Credit phí bản quyền.");
+          }
+        }
+      }
+    };
+
+    const preventContextMenu = (e: MouseEvent) => {
+      if (activeTab === 'preview') e.preventDefault();
+    };
+
+    document.addEventListener('copy', handleIllegalCopy);
+    document.addEventListener('keydown', handleIllegalCopy);
+    document.addEventListener('contextmenu', preventContextMenu);
+    return () => {
+      document.removeEventListener('copy', handleIllegalCopy);
+      document.removeEventListener('keydown', handleIllegalCopy);
+      document.removeEventListener('contextmenu', preventContextMenu);
+    };
+  }, [user, credits, activeTab]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -175,27 +236,6 @@ export default function App() {
       if (error.code === 'permission-denied') setShowPermissionError(true);
     } finally {
       setAuthLoading(false);
-    }
-  };
-
-  const deductCredit = async (): Promise<boolean> => {
-    if (!user || credits === null) return false;
-    if (credits <= 0) {
-      setShowCreditAlert(true);
-      return false;
-    }
-    setIsDeducting(true);
-    try {
-      const collectionName = user.isGuest ? "guests" : "users";
-      const userRef = doc(db, collectionName, user.uid);
-      await updateDoc(userRef, { credits: increment(-1) });
-      setCredits(prev => (prev !== null ? prev - 1 : 0));
-      return true;
-    } catch (error: any) {
-      setToast({ message: "Lỗi kết nối máy chủ!", type: 'error' });
-      return false;
-    } finally {
-      setIsDeducting(false);
     }
   };
 
@@ -291,7 +331,7 @@ export default function App() {
         textareaRef.current.setSelectionRange(start + textBefore.length, end + textBefore.length);
       }
     }, 0);
-  }, []);
+  }, [content]);
 
   const handleDrawingSubmit = async (data: string) => {
     if (data.startsWith('LATEX_RAW:')) {
@@ -358,11 +398,11 @@ export default function App() {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
+    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden select-none"> {/* select-none chặn bôi đen toàn trang */}
       {toast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 duration-300">
           <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl shadow-2xl border bg-white ${toast.type === 'success' ? 'text-green-700' : 'text-indigo-700'}`}>
-            <CheckCircle2 size={18} />
+            {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
             <span className="font-bold text-sm">{toast.message}</span>
           </div>
         </div>
@@ -409,7 +449,7 @@ export default function App() {
           if (previewEl && await deductCredit()) {
              const blob = new Blob([previewEl.innerHTML], { type: "text/html" });
              await navigator.clipboard.write([new ClipboardItem({ ["text/html"]: blob })]);
-             setToast({ message: "✅ Đã sao chép định dạng", type: 'success' });
+             setToast({ message: "✅ Đã sao chép định dạng (-1 Credit)", type: 'success' });
           }
         }} 
         onPrint={async () => { if (await deductCredit()) window.print(); }} 
@@ -429,27 +469,38 @@ export default function App() {
 
       <main className="flex-1 flex overflow-hidden">
         <div className={`flex flex-col flex-1 border-r border-slate-200 bg-slate-50/50 ${activeTab === 'preview' ? 'hidden md:flex' : 'flex'}`}>
-          {/* TEXTAREA VỚI TÍNH NĂNG TỰ ĐỘNG CHUYỂN ĐỔI TÍCH PHÂN */}
           <textarea 
             ref={textareaRef} 
             value={content} 
             onChange={(e) => {
               const rawValue = e.target.value;
-              // Nếu chuỗi chứa ký tự ∫ thì tự động format sang LaTeX
-              const formatted = rawValue.includes('∫') ? autoFormatMath(rawValue) : rawValue;
+              // Tự động định dạng toán học không cần AI
+              const formatted = autoFormatMath(rawValue);
               setContent(formatted);
               setPreviewContent(formatted);
             }} 
-            className="flex-1 p-8 mono text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800 placeholder:text-slate-300" 
-            placeholder="Dán nội dung vào đây. Ví dụ: ∫ab f(x)dx=F(b)-F(a)" 
+            className="flex-1 p-8 mono text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800 placeholder:text-slate-300 select-text" 
+            placeholder="Dán nội dung vào đây. Ví dụ: ∫ab, √x, vtAB, gABC..." 
           />
         </div>
-        <div className={`flex flex-col flex-1 bg-white overflow-y-auto ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
+        {/* VÙNG PREVIEW - CHẶN CHUỘT ĐỂ CHỐNG COPY */}
+        <div className={`flex flex-col flex-1 bg-white overflow-y-auto pointer-events-none ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
            <div className="flex-1 py-12 px-8 md:px-16 max-w-4xl mx-auto w-full">
               <MarkdownPreview content={previewContent || content} />
            </div>
         </div>
       </main>
+
+      {showCreditAlert && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 animate-in fade-in duration-300">
+          <div className="bg-white max-w-sm w-full rounded-[32px] p-10 text-center shadow-2xl border border-white">
+            <AlertTriangle className="text-red-500 mx-auto mb-6" size={40} />
+            <h3 className="text-2xl font-black text-slate-900 mb-2">Hết lượt sử dụng</h3>
+            <p className="text-slate-500 text-sm mb-8 px-2">Bạn cần nạp thêm credit hoặc đăng nhập tài khoản Pro để tiếp tục.</p>
+            <Button onClick={() => setShowCreditAlert(false)} className="w-full py-4 rounded-2xl">Đã hiểu</Button>
+          </div>
+        </div>
+      )}
 
       <DrawingModal isOpen={isDrawingModalOpen} onClose={() => setIsDrawingModalOpen(false)} onSubmit={handleDrawingSubmit} isProcessing={isAiProcessing} />
     </div>
