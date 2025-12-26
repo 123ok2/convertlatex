@@ -37,7 +37,9 @@ import {
   Monitor,
   ShieldAlert,
   Lock,
-  Copy as CopyIcon
+  Copy as CopyIcon,
+  ShieldCheck, // Thêm mới
+  Mail         // Thêm mới
 } from 'lucide-react';
 
 /**
@@ -74,6 +76,33 @@ const generateFingerprint = () => {
   return 'dev-' + Math.abs(hash).toString(36);
 };
 
+/**
+ * BỘ LỌC TOÁN HỌC TỰ ĐỘNG (Added Feature)
+ */
+const autoFormatMath = (text: string): string => {
+  let p = text;
+  // 1. Tích phân: ∫ab -> \int_{a}^{b}
+  p = p.replace(/∫(\w)(\w)\s?([^=\n]+)/g, "\\int_{$1}^{$2} $3");
+  // 2. Căn thức: √x hoặc √(x+1) -> \sqrt{x}
+  p = p.replace(/√(\w)/g, "\\sqrt{$1}").replace(/√\(([^)]+)\)/g, "\\sqrt{$1}");
+  // 3. Vectơ: vtAB -> \overrightarrow{AB}
+  p = p.replace(/vt([A-Z]{1,2})/g, "\\overrightarrow{$1}");
+  // 4. Góc: gABC -> \widehat{ABC}
+  p = p.replace(/g([A-Z]{3})/g, "\\widehat{$1}");
+  
+  // Tự động bao quanh bằng $$ nếu chứa ký hiệu toán học đặc biệt nhưng chưa có định dạng
+  const lines = p.split('\n');
+  const formattedLines = lines.map(line => {
+    const hasMath = /\\int|\\sqrt|\\overrightarrow|\\widehat|\^|_/.test(line);
+    if (hasMath && !line.includes('$$') && line.trim().length > 0) {
+      return `$$ ${line.trim()} $$`;
+    }
+    return line;
+  });
+
+  return formattedLines.join('\n');
+};
+
 export default function App() {
   const [user, setUser] = useState<any | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -105,6 +134,15 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  // ĐÓNG MENU KHI NHẤP RA NGOÀI (Added Feature)
+  useEffect(() => {
+    const handleOutsideClick = () => setShowProfileMenu(false);
+    if (showProfileMenu) {
+      window.addEventListener('click', handleOutsideClick);
+      return () => window.removeEventListener('click', handleOutsideClick);
+    }
+  }, [showProfileMenu]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -212,6 +250,40 @@ export default function App() {
     }
   };
 
+  // HỆ THỐNG BẢO VỆ CHỐNG COPY (Added Feature)
+  useEffect(() => {
+    const handleIllegalCopy = async (e: ClipboardEvent | KeyboardEvent) => {
+      const isCopyKey = (e instanceof KeyboardEvent && (e.ctrlKey || e.metaKey) && e.key === 'c');
+      const isCopyEvent = (e.type === 'copy');
+
+      if (isCopyKey || isCopyEvent) {
+        const selection = window.getSelection()?.toString();
+        // Nếu bôi đen trên 5 ký tự thì chặn và trừ credit
+        if (selection && selection.length > 5) {
+          e.preventDefault();
+          const success = await deductCredit();
+          if (success) {
+            setToast({ message: "Copy bôi đen bị trừ 1 credit!", type: 'error' });
+            alert("Hành động copy bị hạn chế để bảo vệ nội dung. Hệ thống đã trừ 1 Credit phí bản quyền.");
+          }
+        }
+      }
+    };
+
+    const preventContextMenu = (e: MouseEvent) => {
+      if (activeTab === 'preview') e.preventDefault();
+    };
+
+    document.addEventListener('copy', handleIllegalCopy);
+    document.addEventListener('keydown', handleIllegalCopy);
+    document.addEventListener('contextmenu', preventContextMenu);
+    return () => {
+      document.removeEventListener('copy', handleIllegalCopy);
+      document.removeEventListener('keydown', handleIllegalCopy);
+      document.removeEventListener('contextmenu', preventContextMenu);
+    };
+  }, [user, credits, activeTab]);
+
   const handleGuestLogin = async () => {
     setAuthLoading(true);
     try {
@@ -296,7 +368,12 @@ export default function App() {
     const end = textarea.selectionEnd;
     const previousContent = textarea.value;
     const newContent = previousContent.substring(0, start) + textBefore + previousContent.substring(start, end) + textAfter + previousContent.substring(end);
-    setContent(newContent);
+    
+    // Áp dụng autoFormat (Updated)
+    const formatted = autoFormatMath(newContent);
+    setContent(formatted);
+    setPreviewContent(formatted);
+
     setTimeout(() => {
       if (textareaRef.current) {
         textareaRef.current.focus();
@@ -385,7 +462,7 @@ export default function App() {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
+    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden select-none"> {/* Added select-none */}
       {toast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 duration-300">
           <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl shadow-2xl border ${
@@ -426,27 +503,57 @@ export default function App() {
              </div>
            </div>
 
-           <div className="relative">
+           {/* AVATAR & DROPDOWN MENU - Updated */}
+           <div className="relative" onClick={(e) => e.stopPropagation()}>
              <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 hover:bg-white transition-all">
-               <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white ${user.isGuest ? 'bg-orange-500' : 'bg-indigo-600'}`}>
+               <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-md ${user.isGuest ? 'bg-orange-500' : 'bg-indigo-600'}`}>
                  {user.isGuest ? <Monitor size={20} /> : (user.email?.[0].toUpperCase() || 'U')}
                </div>
-               <ChevronDown size={16} className="text-slate-400 mr-2" />
+               <ChevronDown size={16} className={`text-slate-400 mr-2 transition-transform duration-200 ${showProfileMenu ? 'rotate-180' : ''}`} />
              </button>
+             
              {showProfileMenu && (
-               <div className="absolute right-0 top-full mt-3 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 p-6 z-50 animate-in zoom-in-95 duration-200">
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 shadow-inner">
-                      {user.isGuest ? <Fingerprint size={24} /> : <UserIcon size={24} />}
+               <div className="absolute right-0 top-full mt-3 w-72 bg-white rounded-[28px] shadow-2xl border border-slate-100 overflow-hidden z-50 animate-in zoom-in-95 duration-200">
+                  <div className="p-6 bg-indigo-50/50 border-b border-indigo-100">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-lg ${user.isGuest ? 'bg-orange-500' : 'bg-indigo-600'}`}>
+                        {user.isGuest ? <Fingerprint size={24} /> : (user.email?.[0].toUpperCase() || 'U')}
+                      </div>
+                      <div className="overflow-hidden">
+                        <h4 className="font-bold text-slate-900 truncate">{user.isGuest ? "Người dùng Khách" : "Thành viên Pro"}</h4>
+                        <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider flex items-center gap-1"><ShieldCheck size={10}/> Đã xác thực</p>
+                      </div>
                     </div>
-                    <div className="overflow-hidden">
-                      <p className="font-bold text-slate-900 truncate text-sm leading-tight">{user.displayEmail}</p>
-                      <p className="text-[10px] text-slate-400 font-mono truncate mt-1">ID: {user.uid}</p>
+                    
+                    <div className="space-y-2">
+                       {/* ID Display */}
+                       <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">ID Tài khoản</label>
+                          <div 
+                            onClick={() => {
+                              navigator.clipboard.writeText(user.uid);
+                              setToast({ message: "Đã copy ID", type: 'success' });
+                            }}
+                            className="flex items-center justify-between gap-2 text-slate-600 text-[11px] font-mono bg-white p-2 rounded-xl border border-indigo-50 cursor-pointer hover:bg-indigo-100/50 transition-colors"
+                          >
+                            <span className="truncate">{user.uid}</span>
+                            <CopyIcon size={12} className="text-slate-400" />
+                          </div>
+                       </div>
+                       
+                       <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Email</label>
+                          <div className="flex items-center gap-2 text-slate-500 text-xs bg-white/80 p-2 rounded-xl border border-indigo-50">
+                            <Mail size={12}/> <span className="truncate">{user?.displayEmail}</span>
+                          </div>
+                       </div>
                     </div>
                   </div>
-                  <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 text-red-600 font-bold rounded-2xl hover:bg-red-100 transition-colors">
-                    <LogOut size={18} /> Đăng xuất
-                  </button>
+                  <div className="p-2">
+                    <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-2xl transition-colors font-bold text-sm">
+                      <LogOut size={18} /> Đăng xuất
+                    </button>
+                  </div>
                </div>
              )}
            </div>
@@ -487,9 +594,23 @@ export default function App() {
 
       <main className="flex-1 flex overflow-hidden">
         <div className={`flex flex-col flex-1 border-r border-slate-200 bg-slate-50/50 transition-all ${activeTab === 'preview' ? 'hidden md:flex' : 'flex'}`}>
-          <textarea ref={textareaRef} value={content} onChange={(e) => setContent(e.target.value)} className="flex-1 p-8 mono text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800" placeholder="Dán nội dung vào đây..." />
+          <textarea 
+            ref={textareaRef} 
+            value={content} 
+            onChange={(e) => {
+               // Apply autoFormat (Added Feature)
+               const val = e.target.value;
+               const formatted = autoFormatMath(val);
+               setContent(formatted);
+               // Note: Bạn có thể bỏ setPreviewContent ở đây nếu muốn preview chỉ update khi nhấn nút, 
+               // nhưng để trải nghiệm tốt nhất (real-time), tôi giữ nó ở đây.
+               setPreviewContent(formatted);
+            }} 
+            className="flex-1 p-8 mono text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800 select-text" // Added select-text
+            placeholder="Dán nội dung vào đây..." 
+          />
         </div>
-        <div className={`flex flex-col flex-1 bg-white overflow-y-auto custom-scrollbar transition-all ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`flex flex-col flex-1 bg-white overflow-y-auto custom-scrollbar transition-all pointer-events-none ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}> {/* Added pointer-events-none */}
            <div className="flex-1 py-12 px-8 md:px-16 max-w-4xl mx-auto w-full">
               <MarkdownPreview content={previewContent || content} />
            </div>
