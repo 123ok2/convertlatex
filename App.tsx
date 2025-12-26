@@ -30,15 +30,11 @@ import {
   AlertTriangle, 
   CheckCircle2, 
   Info,
-  X,
-  User as UserIcon,
   ChevronDown,
-  Fingerprint,
   Monitor,
-  ShieldAlert,
   ShieldCheck,
   Mail,
-  Lock,
+  Fingerprint as IDIcon,
   Copy as CopyIcon
 } from 'lucide-react';
 
@@ -49,24 +45,16 @@ const generateFingerprint = () => {
   const { userAgent, language, hardwareConcurrency, deviceMemory } = navigator as any;
   const { width, height, colorDepth } = window.screen;
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  
   let canvasData = '';
   try {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      canvas.width = 100;
-      canvas.height = 30;
-      ctx.textBaseline = "top";
-      ctx.font = "14px 'Arial'";
-      ctx.fillStyle = "#f60";
-      ctx.fillRect(10, 5, 50, 20);
-      ctx.fillStyle = "#069";
+      canvas.width = 100; canvas.height = 30;
       ctx.fillText("LLM-PRO", 2, 2);
       canvasData = canvas.toDataURL().slice(-100);
     }
   } catch (e) {}
-
   const raw = [userAgent, language, hardwareConcurrency, deviceMemory, width, height, colorDepth, timezone, canvasData].join('###');
   let hash = 0;
   for (let i = 0; i < raw.length; i++) {
@@ -77,25 +65,19 @@ const generateFingerprint = () => {
 };
 
 /**
- * BỘ LỌC TOÁN HỌC TỰ ĐỘNG (KHÔNG CẦN AI)
- * Hỗ trợ Sách giáo khoa 2018: Tích phân, Căn thức, Vectơ, Góc.
+ * BỘ LỌC TOÁN HỌC TỰ ĐỘNG
  */
 const autoFormatMath = (text: string): string => {
   let p = text;
-  p = p.replace(/∫(\w)(\w)\s?([^=\n]+)/g, "\\int_{${1}}^{${2}} $3");
+  p = p.replace(/∫(\w)(\w)\s?([^=\n]+)/g, "\\int_{$1}^{$2} $3");
   p = p.replace(/√(\w)/g, "\\sqrt{$1}").replace(/√\(([^)]+)\)/g, "\\sqrt{$1}");
   p = p.replace(/vt([A-Z]{1,2})/g, "\\overrightarrow{$1}");
   p = p.replace(/g([A-Z]{3})/g, "\\widehat{$1}");
   
-  const lines = p.split('\n');
-  const formattedLines = lines.map(line => {
+  return p.split('\n').map(line => {
     const hasMath = /\\int|\\sqrt|\\overrightarrow|\\widehat|\^|_/.test(line);
-    if (hasMath && !line.includes('$$') && line.trim().length > 0) {
-      return `$$ ${line.trim()} $$`;
-    }
-    return line;
-  });
-  return formattedLines.join('\n');
+    return (hasMath && !line.includes('$$') && line.trim().length > 0) ? `$$ ${line.trim()} $$` : line;
+  }).join('\n');
 };
 
 export default function App() {
@@ -106,11 +88,7 @@ export default function App() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
-  const [showConfigError, setShowConfigError] = useState(false);
-  const [showPermissionError, setShowPermissionError] = useState(false);
   const [showCreditAlert, setShowCreditAlert] = useState(false);
-
   const [content, setContent] = useState<string>('');
   const [previewContent, setPreviewContent] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
@@ -121,47 +99,22 @@ export default function App() {
   const [toast, setToast] = useState<{message: string, type: 'success' | 'info' | 'error'} | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
-
-  // ĐÓNG MENU KHI NHẤP RA NGOÀI
-  useEffect(() => {
-    const handleOutsideClick = () => setShowProfileMenu(false);
-    if (showProfileMenu) {
-      window.addEventListener('click', handleOutsideClick);
-      return () => window.removeEventListener('click', handleOutsideClick);
-    }
-  }, [showProfileMenu]);
 
   // LOGIC TRỪ CREDIT
   const deductCredit = async (): Promise<boolean> => {
-    if (!user || credits === null) return false;
-    if (credits <= 0) {
-      setShowCreditAlert(true);
-      return false;
+    if (!user || credits === null || credits <= 0) {
+      setShowCreditAlert(true); return false;
     }
     setIsDeducting(true);
     try {
       const collectionName = user.isGuest ? "guests" : "users";
-      const userRef = doc(db, collectionName, user.uid);
-      await updateDoc(userRef, { credits: increment(-1) });
+      await updateDoc(doc(db, collectionName, user.uid), { credits: increment(-1) });
       setCredits(prev => (prev !== null ? prev - 1 : 0));
       return true;
-    } catch (error: any) {
-      setToast({ message: "Lỗi kết nối máy chủ!", type: 'error' });
-      return false;
-    } finally {
-      setIsDeducting(false);
-    }
+    } catch (e) { return false; } finally { setIsDeducting(false); }
   };
 
-  // BẢO VỆ CHỐNG COPY
+  // CHỐNG COPY
   useEffect(() => {
     const handleIllegalCopy = async (e: ClipboardEvent | KeyboardEvent) => {
       const isCopyKey = (e instanceof KeyboardEvent && (e.ctrlKey || e.metaKey) && e.key === 'c');
@@ -170,112 +123,47 @@ export default function App() {
         if (selection && selection.length > 5) {
           e.preventDefault();
           if (await deductCredit()) {
-            setToast({ message: "Copy bôi đen bị trừ 1 credit!", type: 'error' });
-            alert("Hệ thống đã trừ 1 Credit phí bản quyền để bảo vệ nội dung.");
+            setToast({ message: "Phát hiện copy bôi đen! -1 Credit", type: 'error' });
           }
         }
       }
     };
-    const preventContextMenu = (e: MouseEvent) => {
-      if (activeTab === 'preview') e.preventDefault();
-    };
     document.addEventListener('copy', handleIllegalCopy);
     document.addEventListener('keydown', handleIllegalCopy);
-    document.addEventListener('contextmenu', preventContextMenu);
     return () => {
       document.removeEventListener('copy', handleIllegalCopy);
       document.removeEventListener('keydown', handleIllegalCopy);
-      document.removeEventListener('contextmenu', preventContextMenu);
     };
-  }, [user, credits, activeTab]);
+  }, [user, credits]);
+
+  // ĐÓNG MENU KHI NHẤP RA NGOÀI
+  useEffect(() => {
+    const closeMenu = () => setShowProfileMenu(false);
+    if (showProfileMenu) {
+      window.addEventListener('click', closeMenu);
+      return () => window.removeEventListener('click', closeMenu);
+    }
+  }, [showProfileMenu]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      const fingerprint = generateFingerprint();
+      const f = generateFingerprint();
       if (currentUser) {
         const isGuest = currentUser.isAnonymous;
-        const docId = isGuest ? fingerprint : currentUser.uid;
-        setUser({
-          ...currentUser,
-          uid: docId,
-          isGuest,
-          fingerprint,
-          displayEmail: isGuest ? "ID: " + docId : currentUser.email
-        });
-        await syncUserCredits(docId, isGuest);
-      } else {
-        setUser(null);
-        setCredits(null);
-        setAuthLoading(false);
-      }
+        const docId = isGuest ? f : currentUser.uid;
+        setUser({ ...currentUser, uid: docId, isGuest, displayEmail: isGuest ? "Chế độ dùng thử" : currentUser.email });
+        const snap = await getDoc(doc(db, isGuest ? "guests" : "users", docId));
+        if (snap.exists()) setCredits(snap.data().credits);
+        else {
+          const init = isGuest ? 10 : 20;
+          await setDoc(doc(db, isGuest ? "guests" : "users", docId), { credits: init, deviceId: docId, isGuest });
+          setCredits(init);
+        }
+      } else { setUser(null); }
+      setAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
-
-  const syncUserCredits = async (id: string, isGuest: boolean) => {
-    try {
-      const collectionName = isGuest ? "guests" : "users";
-      const userRef = doc(db, collectionName, id);
-      const snap = await getDoc(userRef);
-      if (snap.exists()) {
-        setCredits(snap.data().credits ?? 0);
-      } else {
-        const initialCredits = isGuest ? 10 : 20;
-        await setDoc(userRef, {
-          email: isGuest ? `guest-${id}@device.local` : email,
-          credits: initialCredits,
-          activatedAt: Timestamp.now(),
-          deviceId: id,
-          isGuest
-        });
-        setCredits(initialCredits);
-      }
-    } catch (error: any) {
-      if (error.code === 'permission-denied') setShowPermissionError(true);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleGuestLogin = async () => {
-    setAuthLoading(true);
-    try { await signInAnonymously(auth); } 
-    catch (error: any) { setShowConfigError(true); setAuthLoading(false); }
-  };
-
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoginLoading(true);
-    try {
-      await setPersistence(auth, browserLocalPersistence);
-      if (isRegistering) await createUserWithEmailAndPassword(auth, email, password);
-      else await signInWithEmailAndPassword(auth, email, password);
-    } catch (error: any) {
-      setToast({ message: error.message, type: 'error' });
-    } finally {
-      setIsLoginLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setShowProfileMenu(false);
-    } catch (error: any) {
-      setToast({ message: "Lỗi đăng xuất", type: 'error' });
-    }
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      setContent(text); setPreviewContent(text);
-    };
-    reader.readAsText(file);
-  };
 
   const handleAIEnhance = useCallback(async () => {
     if (!content.trim() || !(await deductCredit())) return;
@@ -285,85 +173,36 @@ export default function App() {
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
         contents: content,
-        config: { systemInstruction: "Bạn là chuyên gia định dạng Markdown và LaTeX. Trả về Markdown thuần.", thinkingConfig: { thinkingBudget: 0 } }
+        config: { systemInstruction: "Định dạng Markdown và LaTeX chuyên nghiệp." }
       });
       if (response.text) {
-        setContent(response.text); setPreviewContent(response.text);
-        setToast({ message: "✨ Đã tối ưu hóa nội dung", type: 'success' });
+        setContent(response.text);
+        setPreviewContent(response.text);
       }
-    } catch (error) {
-      setToast({ message: "Lỗi AI: " + error, type: 'error' });
-    } finally {
-      setIsAiProcessing(false);
-    }
+    } catch (e) { setToast({message: "Lỗi AI", type: 'error'}); }
+    finally { setIsAiProcessing(false); }
   }, [content, user, credits]);
 
-  const insertTextAtCursor = useCallback((textBefore: string, textAfter: string = '') => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const val = textarea.value;
-    const newContent = val.substring(0, start) + textBefore + val.substring(start, end) + textAfter + val.substring(end);
-    const formatted = autoFormatMath(newContent);
-    setContent(formatted); setPreviewContent(formatted);
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-        textareaRef.current.setSelectionRange(start + textBefore.length, end + textBefore.length);
-      }
-    }, 0);
-  }, []);
-
-  const handleDrawingSubmit = async (data: string) => {
-    if (data.startsWith('LATEX_RAW:')) {
-      insertTextAtCursor(`$$ ${data.replace('LATEX_RAW:', '')} $$`);
-      setIsDrawingModalOpen(false);
-    } else {
-      setIsAiProcessing(true);
-      try {
-        if (await deductCredit()) {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: { parts: [{ inlineData: { mimeType: 'image/png', data: data.split(',')[1] } }, { text: "Convert to LaTeX." }] },
-          });
-          if (response.text) {
-            insertTextAtCursor(`$$ ${response.text.trim()} $$`);
-            setIsDrawingModalOpen(false);
-          }
-        }
-      } catch (error) { setToast({ message: "Lỗi nhận diện", type: 'error' }); } 
-      finally { setIsAiProcessing(false); }
-    }
-  };
-
-  if (authLoading) return (
-    <div className="h-screen flex flex-col items-center justify-center bg-slate-50">
-      <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-      <span className="text-slate-500 font-medium font-mono text-xs uppercase tracking-widest">Đang kiểm tra bảo mật...</span>
-    </div>
-  );
+  if (authLoading) return <div className="h-screen flex items-center justify-center font-mono">XÁC THỰC...</div>;
 
   if (!user) return (
     <div className="h-screen bg-slate-100 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-white">
-        <div className="bg-indigo-600 p-10 text-center">
-          <Bot className="w-16 h-16 text-white mx-auto mb-4" />
-          <h1 className="text-2xl font-extrabold text-white mb-1">LLM Markdown Pro</h1>
-          <p className="text-indigo-100 text-sm opacity-80">Dành cho Giáo viên Phổ thông</p>
-        </div>
-        <div className="p-10">
-          <form onSubmit={handleEmailAuth} className="space-y-4">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500" placeholder="Email" required />
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500" placeholder="Mật khẩu" required />
-            <Button type="submit" disabled={isLoginLoading} className="w-full py-4 text-lg font-bold rounded-xl">{isLoginLoading ? <Loader2 className="animate-spin" /> : (isRegistering ? 'Đăng ký' : 'Đăng nhập')}</Button>
-          </form>
-          <div className="mt-8 flex flex-col items-center gap-4">
-            <button onClick={() => setIsRegistering(!isRegistering)} className="text-sm font-semibold text-indigo-600">{isRegistering ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký ngay'}</button>
-            <button onClick={handleGuestLogin} className="text-sm font-bold text-slate-500 hover:text-indigo-600 flex items-center gap-2"><Monitor size={14} /> Xác thực ID Thiết bị (10 Credit)</button>
-          </div>
-        </div>
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-10 text-center">
+        <Bot className="w-16 h-16 text-indigo-600 mx-auto mb-6" />
+        <h1 className="text-2xl font-bold mb-6">Đăng nhập Markdown Pro</h1>
+        <form onSubmit={async (e) => {
+          e.preventDefault(); setIsLoginLoading(true);
+          try {
+            if (isRegistering) await createUserWithEmailAndPassword(auth, email, password);
+            else await signInWithEmailAndPassword(auth, email, password);
+          } catch (err: any) { setToast({ message: err.message, type: 'error' }); }
+          finally { setIsLoginLoading(false); }
+        }} className="space-y-4">
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl outline-none" placeholder="Email" required />
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl outline-none" placeholder="Mật khẩu" required />
+          <Button type="submit" disabled={isLoginLoading} className="w-full py-4 rounded-xl">{isLoginLoading ? <Loader2 className="animate-spin" /> : (isRegistering ? 'Đăng ký' : 'Đăng nhập')}</Button>
+        </form>
+        <button onClick={() => signInAnonymously(auth)} className="mt-6 text-slate-500 font-bold hover:text-indigo-600 flex items-center gap-2 mx-auto"><Monitor size={16}/> Xác thực thiết bị</button>
       </div>
     </div>
   );
@@ -371,125 +210,132 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen bg-slate-50 overflow-hidden select-none">
       {toast && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 duration-300">
-          <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl shadow-2xl border bg-white ${toast.type === 'success' ? 'text-green-700' : 'text-indigo-700'}`}>
-            {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
-            <span className="font-bold text-sm">{toast.message}</span>
-          </div>
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl shadow-2xl bg-white border flex items-center gap-3 animate-in slide-in-from-top-4">
+          {toast.type === 'error' ? <AlertTriangle className="text-red-500" size={18}/> : <CheckCircle2 className="text-green-500" size={18}/>}
+          <span className="font-bold text-sm text-slate-800">{toast.message}</span>
         </div>
       )}
 
-      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 flex items-center justify-between z-40 flex-shrink-0">
+      <header className="h-20 bg-white border-b px-8 flex items-center justify-between z-40">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200"><Bot className="text-white" size={24} /></div>
-          <div>
-            <h2 className="font-extrabold text-slate-900 leading-tight text-lg">Markdown Pro</h2>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{user.isGuest ? 'Phiên dùng thử' : 'Thành viên Pro'}</span>
-          </div>
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg"><Bot className="text-white" size={20} /></div>
+          <h2 className="font-bold text-slate-900">Markdown Pro</h2>
         </div>
 
         <div className="flex items-center gap-4">
-           <div className="flex items-center gap-3 px-5 py-2.5 bg-yellow-50 text-yellow-700 border border-yellow-100 rounded-2xl">
-             <Zap className="text-yellow-500" size={16} fill="currentColor" />
-             <p className="text-lg font-black leading-none">{credits ?? 0} Credits</p>
-           </div>
-           
-           {/* AVATAR & DROPDOWN MENU - ĐÃ ĐƯỢC SỬA */}
-           <div className="relative" onClick={(e) => e.stopPropagation()}>
-             <button 
-                onClick={() => setShowProfileMenu(!showProfileMenu)} 
-                className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 hover:bg-slate-200 transition-colors"
-             >
-               <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold shadow-md">
-                 {user.email?.[0].toUpperCase() || 'G'}
-               </div>
-               <ChevronDown size={16} className={`text-slate-400 mr-2 transition-transform duration-200 ${showProfileMenu ? 'rotate-180' : ''}`} />
-             </button>
+          <div className="flex items-center gap-2 px-4 py-2 bg-yellow-50 text-yellow-700 border border-yellow-100 rounded-2xl">
+            <Zap className="text-yellow-500" size={16} fill="currentColor" />
+            <span className="font-black">{credits ?? 0} Credits</span>
+          </div>
 
-             {showProfileMenu && (
-               <div className="absolute right-0 mt-3 w-72 bg-white rounded-[24px] shadow-2xl border border-slate-100 overflow-hidden z-[60] animate-in zoom-in-95 duration-200">
-                 <div className="p-6 bg-indigo-50/50 border-b border-indigo-100">
-                   <div className="flex items-center gap-3 mb-4">
-                     <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-xl font-bold">
-                       {user.email?.[0].toUpperCase() || 'G'}
-                     </div>
-                     <div className="overflow-hidden">
-                       <h4 className="font-bold text-slate-900 truncate">{user.isGuest ? "Người dùng Khách" : "Thành viên Pro"}</h4>
-                       <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider flex items-center gap-1"><ShieldCheck size={10}/> Đã xác thực</p>
-                     </div>
-                   </div>
-                   <div className="flex items-center gap-2 text-slate-500 text-xs bg-white/80 p-2 rounded-lg border border-indigo-50">
-                     <Mail size={12}/> <span className="truncate">{user.displayEmail}</span>
-                   </div>
-                 </div>
-                 <div className="p-2">
-                   <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-colors font-bold text-sm">
-                     <LogOut size={18} /> Đăng xuất tài khoản
-                   </button>
-                 </div>
-               </div>
-             )}
-           </div>
+          {/* AVATAR & DROPDOWN MENU */}
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <button 
+              onClick={() => setShowProfileMenu(!showProfileMenu)}
+              className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 hover:bg-slate-200"
+            >
+              <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold shadow-md">
+                {user?.email ? user.email[0].toUpperCase() : 'G'}
+              </div>
+              <ChevronDown size={14} className={`text-slate-400 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showProfileMenu && (
+              <div className="absolute right-0 mt-3 w-72 bg-white rounded-[28px] shadow-2xl border border-slate-100 overflow-hidden z-[60] animate-in zoom-in-95">
+                <div className="p-6 bg-indigo-50/50 border-b border-indigo-100">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-xl font-bold">
+                      {user?.email ? user.email[0].toUpperCase() : 'G'}
+                    </div>
+                    <div className="overflow-hidden">
+                      <h4 className="font-bold text-slate-900 truncate">{user?.isGuest ? "Người dùng Khách" : "Thành viên Pro"}</h4>
+                      <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider flex items-center gap-1"><ShieldCheck size={10}/> Đã xác thực</p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {/* HIỂN THỊ ID TÀI KHOẢN */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1">ID Tài khoản</label>
+                      <div 
+                        onClick={() => {
+                          navigator.clipboard.writeText(user.uid);
+                          setToast({ message: "Đã copy ID", type: 'success' });
+                        }}
+                        className="flex items-center justify-between gap-2 text-slate-600 text-[11px] font-mono bg-white p-2 rounded-xl border border-indigo-50 cursor-pointer hover:bg-indigo-100/50 transition-colors"
+                      >
+                        <span className="truncate">{user.uid}</span>
+                        <CopyIcon size={12} className="text-slate-400" />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Liên hệ</label>
+                      <div className="flex items-center gap-2 text-slate-500 text-xs bg-white/80 p-2 rounded-xl border border-indigo-50">
+                        <Mail size={12}/> <span className="truncate">{user?.displayEmail}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-2">
+                  <button onClick={() => signOut(auth)} className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-2xl transition-colors font-bold text-sm">
+                    <LogOut size={18} /> Đăng xuất tài khoản
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
       <Toolbar 
-        onInsert={insertTextAtCursor} onOpenDrawing={() => setIsDrawingModalOpen(true)} 
-        onFileUpload={handleFileUpload} fileInputRef={fileInputRef}
-        onManualPreview={() => {setPreviewContent(content); setActiveTab('preview');}} 
+        onInsert={(t1, t2) => {
+          const start = textareaRef.current?.selectionStart || 0;
+          const end = textareaRef.current?.selectionEnd || 0;
+          const val = content.substring(0, start) + t1 + content.substring(start, end) + (t2 || '') + content.substring(end);
+          const formatted = autoFormatMath(val);
+          setContent(formatted); setPreviewContent(formatted);
+        }} 
         onAIEnhance={handleAIEnhance} isAiProcessing={isAiProcessing} isDeducting={isDeducting}
         onCopyFormatted={async () => {
           const previewEl = document.getElementById('markdown-preview-content');
-          if (previewEl && await deductCredit()) {
+          if (previewEl && (await deductCredit())) {
              const blob = new Blob([previewEl.innerHTML], { type: "text/html" });
              await navigator.clipboard.write([new ClipboardItem({ ["text/html"]: blob })]);
-             setToast({ message: "✅ Đã sao chép định dạng (-1 Credit)", type: 'success' });
+             setToast({ message: "Đã sao chép định dạng (-1 Credit)", type: 'success' });
           }
-        }} 
-        onPrint={async () => { if (await deductCredit()) window.print(); }} 
-        onExportWord={async () => {
-          const previewEl = document.getElementById('markdown-preview-content');
-          if (previewEl && await deductCredit()) {
-             const fullHtml = `<html><head><meta charset='utf-8'></head><body>${previewEl.innerHTML}</body></html>`;
-             const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
-             const link = document.createElement('a');
-             link.href = URL.createObjectURL(blob); link.download = `Doc_${Date.now()}.doc`; link.click();
-          }
-        }} 
-        onClear={() => { if (confirm('Xóa hết nội dung?')) { setContent(''); setPreviewContent(''); } }}
+        }}
       />
 
       <main className="flex-1 flex overflow-hidden">
-        <div className={`flex flex-col flex-1 border-r border-slate-200 bg-slate-50/50 ${activeTab === 'preview' ? 'hidden md:flex' : 'flex'}`}>
+        <div className="flex-1 border-r border-slate-200 bg-slate-50/50">
           <textarea 
             ref={textareaRef} value={content} 
-            onChange={(e) => {
+            onChange={e => {
               const formatted = autoFormatMath(e.target.value);
               setContent(formatted); setPreviewContent(formatted);
             }} 
-            className="flex-1 p-8 mono text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800 placeholder:text-slate-300 select-text" 
-            placeholder="Dán nội dung vào đây. Ví dụ: ∫ab, √x, vtAB, gABC..." 
+            className="w-full h-full p-8 mono text-base outline-none bg-transparent select-text" 
+            placeholder="Gõ: ∫ab, √x, vtAB, gABC..." 
           />
         </div>
-        <div className={`flex flex-col flex-1 bg-white overflow-y-auto pointer-events-none ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
-           <div className="flex-1 py-12 px-8 md:px-16 max-w-4xl mx-auto w-full">
-              <MarkdownPreview content={previewContent || content} />
-           </div>
+        <div className="flex-1 bg-white overflow-y-auto pointer-events-none p-12">
+           <MarkdownPreview content={previewContent || content} />
         </div>
       </main>
 
       {showCreditAlert && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4">
-          <div className="bg-white max-w-sm w-full rounded-[32px] p-10 text-center shadow-2xl border border-white">
-            <AlertTriangle className="text-red-500 mx-auto mb-6" size={40} />
-            <h3 className="text-2xl font-black text-slate-900 mb-2">Hết lượt sử dụng</h3>
-            <p className="text-slate-500 text-sm mb-8 px-2">Bạn cần nạp thêm credit hoặc đăng nhập tài khoản Pro để tiếp tục.</p>
-            <Button onClick={() => setShowCreditAlert(false)} className="w-full py-4 rounded-2xl">Đã hiểu</Button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-md p-4">
+          <div className="bg-white max-w-sm w-full rounded-[32px] p-10 text-center shadow-2xl">
+            <AlertTriangle className="text-red-500 mx-auto mb-4" size={48} />
+            <h3 className="text-2xl font-black mb-2">Hết Credit</h3>
+            <p className="text-slate-500 mb-8 px-2 text-sm">Vui lòng nạp thêm lượt dùng để tiếp tục sử dụng.</p>
+            <Button onClick={() => setShowCreditAlert(false)} className="w-full py-4 rounded-xl">Đã hiểu</Button>
           </div>
         </div>
       )}
 
-      <DrawingModal isOpen={isDrawingModalOpen} onClose={() => setIsDrawingModalOpen(false)} onSubmit={handleDrawingSubmit} isProcessing={isAiProcessing} />
+      <DrawingModal isOpen={isDrawingModalOpen} onClose={() => setIsDrawingModalOpen(false)} onSubmit={() => {}} isProcessing={isAiProcessing} />
     </div>
   );
 }
