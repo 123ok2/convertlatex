@@ -38,8 +38,8 @@ import {
   ShieldAlert,
   Lock,
   Copy as CopyIcon,
-  ShieldCheck, // Thêm mới
-  Mail         // Thêm mới
+  ShieldCheck,
+  Mail
 } from 'lucide-react';
 
 /**
@@ -77,27 +77,40 @@ const generateFingerprint = () => {
 };
 
 /**
- * BỘ LỌC TOÁN HỌC TỰ ĐỘNG (Added Feature)
+ * BỘ LỌC TOÁN HỌC TỰ ĐỘNG (ĐÃ SỬA LỖI TRÙNG LẶP)
  */
 const autoFormatMath = (text: string): string => {
-  let p = text;
-  // 1. Tích phân: ∫ab -> \int_{a}^{b}
-  p = p.replace(/∫(\w)(\w)\s?([^=\n]+)/g, "\\int_{$1}^{$2} $3");
-  // 2. Căn thức: √x hoặc √(x+1) -> \sqrt{x}
-  p = p.replace(/√(\w)/g, "\\sqrt{$1}").replace(/√\(([^)]+)\)/g, "\\sqrt{$1}");
-  // 3. Vectơ: vtAB -> \overrightarrow{AB}
-  p = p.replace(/vt([A-Z]{1,2})/g, "\\overrightarrow{$1}");
-  // 4. Góc: gABC -> \widehat{ABC}
-  p = p.replace(/g([A-Z]{3})/g, "\\widehat{$1}");
+  // Tách văn bản thành các dòng để xử lý riêng biệt
+  const lines = text.split('\n');
   
-  // Tự động bao quanh bằng $$ nếu chứa ký hiệu toán học đặc biệt nhưng chưa có định dạng
-  const lines = p.split('\n');
   const formattedLines = lines.map(line => {
-    const hasMath = /\\int|\\sqrt|\\overrightarrow|\\widehat|\^|_/.test(line);
-    if (hasMath && !line.includes('$$') && line.trim().length > 0) {
-      return `$$ ${line.trim()} $$`;
+    // 1. NẾU DÒNG ĐÃ CÓ DẤU $ HOẶC $$ THÌ GIỮ NGUYÊN (KHÔNG CAN THIỆP)
+    // Đây là phần sửa quan trọng để tránh lỗi thêm $$ vào công thức đã chuẩn
+    if (line.includes('$')) {
+      return line;
     }
-    return line;
+
+    let p = line;
+    
+    // 2. Chỉ thực hiện thay thế các ký hiệu tắt đặc biệt
+    // Tích phân: ∫ab -> \int_{a}^{b}
+    p = p.replace(/∫(\w)(\w)\s?([^=\n]+)/g, "\\int_{$1}^{$2} $3");
+    // Căn thức: √x hoặc √(bieu_thuc) -> \sqrt{x}
+    p = p.replace(/√(\w)/g, "\\sqrt{$1}").replace(/√\(([^)]+)\)/g, "\\sqrt{$1}");
+    // Vectơ: vtAB -> \overrightarrow{AB}
+    p = p.replace(/vt([A-Z]{1,2})/g, "\\overrightarrow{$1}");
+    // Góc: gABC -> \widehat{ABC}
+    p = p.replace(/g([A-Z]{3})/g, "\\widehat{$1}");
+
+    // 3. Kiểm tra xem dòng sau khi thay thế có chứa lệnh LaTeX không
+    const hasLatexCommand = /\\int|\\sqrt|\\overrightarrow|\\widehat|\^|_/.test(p);
+    
+    // Chỉ thêm $$ nếu có lệnh LaTeX VÀ chưa có dấu $$ (mặc dù bước 1 đã lọc, nhưng kiểm tra lại cho chắc)
+    if (hasLatexCommand && !p.includes('$$') && p.trim().length > 0) {
+      return `$$ ${p.trim()} $$`;
+    }
+
+    return p;
   });
 
   return formattedLines.join('\n');
@@ -135,7 +148,7 @@ export default function App() {
     }
   }, [toast]);
 
-  // ĐÓNG MENU KHI NHẤP RA NGOÀI (Added Feature)
+  // ĐÓNG MENU KHI NHẤP RA NGOÀI
   useEffect(() => {
     const handleOutsideClick = () => setShowProfileMenu(false);
     if (showProfileMenu) {
@@ -150,7 +163,6 @@ export default function App() {
       
       if (currentUser) {
         const isGuest = currentUser.isAnonymous;
-        // Document ID: Nếu là khách dùng fingerprint, nếu là member dùng UID thật nhưng vẫn check fingerprint bên trong
         const docId = isGuest ? fingerprint : currentUser.uid;
 
         setUser({
@@ -183,8 +195,6 @@ export default function App() {
       if (snap.exists()) {
         setCredits(snap.data().credits ?? 0);
       } else {
-        // KIỂM TRA THIẾT BỊ ĐÃ TỒN TẠI TRONG HỆ THỐNG CHƯA
-        // Ta dùng một collection 'devices' để lưu vết mọi thiết bị đã từng nhận quà
         const deviceRef = doc(db, "devices", fingerprint);
         const deviceSnap = await getDoc(deviceRef);
         
@@ -192,22 +202,15 @@ export default function App() {
         const alreadyClaimed = deviceSnap.exists();
 
         if (!alreadyClaimed) {
-          // Nếu thiết bị sạch (chưa từng dùng thử hoặc đăng ký)
           initialCredits = isGuest ? 10 : 20;
-          
-          // Đánh dấu thiết bị đã nhận quà
           await setDoc(deviceRef, {
             firstUserId: id,
             claimedAt: Timestamp.now(),
             type: isGuest ? 'guest' : 'member'
           });
         } else {
-          // Nếu thiết bị đã dùng rồi, đăng ký mới cũng cho 0 credit
           initialCredits = 0;
-          setToast({ 
-            message: "Thiết bị này đã từng nhận Credit miễn phí trước đó!", 
-            type: 'error' 
-          });
+          setToast({ message: "Thiết bị này đã từng nhận Credit miễn phí trước đó!", type: 'error' });
         }
 
         await setDoc(userRef, {
@@ -220,7 +223,6 @@ export default function App() {
         setCredits(initialCredits);
       }
     } catch (error: any) {
-      console.error("Firestore sync error:", error);
       if (error.code === 'permission-denied') setShowPermissionError(true);
     } finally {
       setAuthLoading(false);
@@ -233,7 +235,6 @@ export default function App() {
       setShowCreditAlert(true);
       return false;
     }
-
     setIsDeducting(true);
     try {
       const collectionName = user.isGuest ? "guests" : "users";
@@ -250,7 +251,7 @@ export default function App() {
     }
   };
 
-  // HỆ THỐNG BẢO VỆ CHỐNG COPY (Added Feature)
+  // HỆ THỐNG BẢO VỆ CHỐNG COPY
   useEffect(() => {
     const handleIllegalCopy = async (e: ClipboardEvent | KeyboardEvent) => {
       const isCopyKey = (e instanceof KeyboardEvent && (e.ctrlKey || e.metaKey) && e.key === 'c');
@@ -258,7 +259,6 @@ export default function App() {
 
       if (isCopyKey || isCopyEvent) {
         const selection = window.getSelection()?.toString();
-        // Nếu bôi đen trên 5 ký tự thì chặn và trừ credit
         if (selection && selection.length > 5) {
           e.preventDefault();
           const success = await deductCredit();
@@ -345,7 +345,7 @@ export default function App() {
         model: 'gemini-3-pro-preview',
         contents: content,
         config: { 
-          systemInstruction: "Bạn là chuyên gia định dạng Markdown và LaTeX. Hãy làm đẹp nội dung toán học và bảng biểu. Đảm bảo mọi công thức phức tạp được trình bày chuẩn xác trong block $$ hoặc inline $. Trả về Markdown thuần.",
+          systemInstruction: "Bạn là chuyên gia định dạng Markdown và LaTeX. Hãy làm đẹp nội dung toán học và bảng biểu. Trả về Markdown thuần.",
           thinkingConfig: { thinkingBudget: 0 }
         }
       });
@@ -369,7 +369,7 @@ export default function App() {
     const previousContent = textarea.value;
     const newContent = previousContent.substring(0, start) + textBefore + previousContent.substring(start, end) + textAfter + previousContent.substring(end);
     
-    // Áp dụng autoFormat (Updated)
+    // Áp dụng autoFormat (Đã sửa logic)
     const formatted = autoFormatMath(newContent);
     setContent(formatted);
     setPreviewContent(formatted);
@@ -393,17 +393,10 @@ export default function App() {
         if (await deductCredit()) {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const base64Data = data.split(',')[1];
-          const imagePart = {
-            inlineData: { mimeType: 'image/png', data: base64Data },
-          };
-          const textPart = {
-            text: "Convert this handwritten mathematical, physical or chemical formula into standard LaTeX. Return ONLY the LaTeX string without delimiters like $ or $$."
-          };
           const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
-            contents: { parts: [imagePart, textPart] },
+            contents: { parts: [{ inlineData: { mimeType: 'image/png', data: base64Data } }, { text: "Convert to LaTeX. Return ONLY string." }] },
           });
-          
           if (response.text) {
             insertTextAtCursor(`$$ ${response.text.trim()} $$`);
             setToast({ message: "✨ Đã nhận diện công thức", type: 'success' });
@@ -462,7 +455,7 @@ export default function App() {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden select-none"> {/* Added select-none */}
+    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden select-none">
       {toast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 duration-300">
           <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl shadow-2xl border ${
@@ -503,7 +496,7 @@ export default function App() {
              </div>
            </div>
 
-           {/* AVATAR & DROPDOWN MENU - Updated */}
+           {/* AVATAR & DROPDOWN MENU */}
            <div className="relative" onClick={(e) => e.stopPropagation()}>
              <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 hover:bg-white transition-all">
                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-md ${user.isGuest ? 'bg-orange-500' : 'bg-indigo-600'}`}>
@@ -598,19 +591,17 @@ export default function App() {
             ref={textareaRef} 
             value={content} 
             onChange={(e) => {
-               // Apply autoFormat (Added Feature)
+               // Apply smart autoFormat logic
                const val = e.target.value;
                const formatted = autoFormatMath(val);
                setContent(formatted);
-               // Note: Bạn có thể bỏ setPreviewContent ở đây nếu muốn preview chỉ update khi nhấn nút, 
-               // nhưng để trải nghiệm tốt nhất (real-time), tôi giữ nó ở đây.
                setPreviewContent(formatted);
             }} 
-            className="flex-1 p-8 mono text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800 select-text" // Added select-text
+            className="flex-1 p-8 mono text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800 select-text" 
             placeholder="Dán nội dung vào đây..." 
           />
         </div>
-        <div className={`flex flex-col flex-1 bg-white overflow-y-auto custom-scrollbar transition-all pointer-events-none ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}> {/* Added pointer-events-none */}
+        <div className={`flex flex-col flex-1 bg-white overflow-y-auto custom-scrollbar transition-all pointer-events-none ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
            <div className="flex-1 py-12 px-8 md:px-16 max-w-4xl mx-auto w-full">
               <MarkdownPreview content={previewContent || content} />
            </div>
