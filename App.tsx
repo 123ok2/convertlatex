@@ -77,40 +77,63 @@ const generateFingerprint = () => {
 };
 
 /**
- * BỘ LỌC TOÁN HỌC TỰ ĐỘNG (ĐÃ SỬA LỖI TRÙNG LẶP)
+ * BỘ LỌC TOÁN HỌC TỰ ĐỘNG (DÀNH CHO NHẬP LIỆU TRỰC TIẾP)
  */
 const autoFormatMath = (text: string): string => {
-  // Tách văn bản thành các dòng để xử lý riêng biệt
   const lines = text.split('\n');
-  
   const formattedLines = lines.map(line => {
-    // 1. NẾU DÒNG ĐÃ CÓ DẤU $ HOẶC $$ THÌ GIỮ NGUYÊN (KHÔNG CAN THIỆP)
-    // Đây là phần sửa quan trọng để tránh lỗi thêm $$ vào công thức đã chuẩn
-    if (line.includes('$')) {
-      return line;
-    }
-
+    if (line.includes('$')) return line;
     let p = line;
-    
-    // 2. Chỉ thực hiện thay thế các ký hiệu tắt đặc biệt
-    // Tích phân: ∫ab -> \int_{a}^{b}
     p = p.replace(/∫(\w)(\w)\s?([^=\n]+)/g, "\\int_{$1}^{$2} $3");
-    // Căn thức: √x hoặc √(bieu_thuc) -> \sqrt{x}
     p = p.replace(/√(\w)/g, "\\sqrt{$1}").replace(/√\(([^)]+)\)/g, "\\sqrt{$1}");
-    // Vectơ: vtAB -> \overrightarrow{AB}
     p = p.replace(/vt([A-Z]{1,2})/g, "\\overrightarrow{$1}");
-    // Góc: gABC -> \widehat{ABC}
     p = p.replace(/g([A-Z]{3})/g, "\\widehat{$1}");
-
-    // 3. Kiểm tra xem dòng sau khi thay thế có chứa lệnh LaTeX không
     const hasLatexCommand = /\\int|\\sqrt|\\overrightarrow|\\widehat|\^|_/.test(p);
-    
-    // Chỉ thêm $$ nếu có lệnh LaTeX VÀ chưa có dấu $$ (mặc dù bước 1 đã lọc, nhưng kiểm tra lại cho chắc)
     if (hasLatexCommand && !p.includes('$$') && p.trim().length > 0) {
       return `$$ ${p.trim()} $$`;
     }
-
     return p;
+  });
+  return formattedLines.join('\n');
+};
+
+/**
+ * TỰ ĐỘNG DỊCH VĂN BẢN TOÁN HỌC THÔ SANG LATEX (KHI DÁN) - KHÔNG DÙNG AI
+ */
+const translateRawPasteToLatex = (text: string): string => {
+  let p = text;
+  
+  // 1. Thay thế các ký hiệu đơn lẻ
+  p = p.replace(/∫/g, '\\int ')
+       .replace(/√/g, '\\sqrt')
+       .replace(/∞/g, '\\infty ')
+       .replace(/π/g, '\\pi ')
+       .replace(/α/g, '\\alpha ')
+       .replace(/β/g, '\\beta ')
+       .replace(/Δ/g, '\\Delta ')
+       .replace(/±/g, '\\pm ')
+       .replace(/≤/g, '\\le ')
+       .replace(/≥/g, '\\ge ')
+       .replace(/≠/g, '\\ne ')
+       .replace(/≈/g, '\\approx ')
+       .replace(/×/g, '\\times ')
+       .replace(/÷/g, '\\div ')
+       .replace(/′/g, "'");
+
+  // 2. Xử lý vi phân dx/dy/dt dính liền
+  p = p.replace(/(\w)dx/g, '$1 \\,dx')
+       .replace(/(\w)dy/g, '$1 \\,dy')
+       .replace(/(\w)dt/g, '$1 \\,dt');
+
+  // 3. Tự động bao bọc $$ cho các dòng chứa ký hiệu toán học
+  const lines = p.split('\n');
+  const formattedLines = lines.map(line => {
+    const hasMathSymbol = /\\int|\\sqrt|\\alpha|\\beta|\\Delta|\\infty|\^|_|=/.test(line);
+    // Nếu dòng chứa ký hiệu toán học và chưa được bọc bởi $ hoặc $$
+    if (hasMathSymbol && !line.trim().startsWith('$')) {
+      return `$$ ${line.trim()} $$`;
+    }
+    return line;
   });
 
   return formattedLines.join('\n');
@@ -148,7 +171,6 @@ export default function App() {
     }
   }, [toast]);
 
-  // ĐÓNG MENU KHI NHẤP RA NGOÀI
   useEffect(() => {
     const handleOutsideClick = () => setShowProfileMenu(false);
     if (showProfileMenu) {
@@ -160,11 +182,9 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       const fingerprint = generateFingerprint();
-      
       if (currentUser) {
         const isGuest = currentUser.isAnonymous;
         const docId = isGuest ? fingerprint : currentUser.uid;
-
         setUser({
           ...currentUser,
           uid: docId,
@@ -172,7 +192,6 @@ export default function App() {
           fingerprint,
           displayEmail: isGuest ? "Chế độ dùng thử" : currentUser.email
         });
-
         await syncUserCredits(docId, isGuest, fingerprint);
       } else {
         setUser(null);
@@ -183,25 +202,18 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  /**
-   * LOGIC ĐỒNG BỘ CREDIT & CHỐNG SPAM
-   */
   const syncUserCredits = async (id: string, isGuest: boolean, fingerprint: string) => {
     try {
       const collectionName = isGuest ? "guests" : "users";
       const userRef = doc(db, collectionName, id);
       const snap = await getDoc(userRef);
-
       if (snap.exists()) {
         setCredits(snap.data().credits ?? 0);
       } else {
         const deviceRef = doc(db, "devices", fingerprint);
         const deviceSnap = await getDoc(deviceRef);
-        
         let initialCredits = 0;
-        const alreadyClaimed = deviceSnap.exists();
-
-        if (!alreadyClaimed) {
+        if (!deviceSnap.exists()) {
           initialCredits = isGuest ? 10 : 20;
           await setDoc(deviceRef, {
             firstUserId: id,
@@ -212,7 +224,6 @@ export default function App() {
           initialCredits = 0;
           setToast({ message: "Thiết bị này đã từng nhận Credit miễn phí trước đó!", type: 'error' });
         }
-
         await setDoc(userRef, {
           email: isGuest ? `guest-${id}@device.local` : (auth.currentUser?.email || email),
           credits: initialCredits,
@@ -250,39 +261,6 @@ export default function App() {
       setIsDeducting(false);
     }
   };
-
-  // HỆ THỐNG BẢO VỆ CHỐNG COPY
-  useEffect(() => {
-    const handleIllegalCopy = async (e: ClipboardEvent | KeyboardEvent) => {
-      const isCopyKey = (e instanceof KeyboardEvent && (e.ctrlKey || e.metaKey) && e.key === 'c');
-      const isCopyEvent = (e.type === 'copy');
-
-      if (isCopyKey || isCopyEvent) {
-        const selection = window.getSelection()?.toString();
-        if (selection && selection.length > 5) {
-          e.preventDefault();
-          const success = await deductCredit();
-          if (success) {
-            setToast({ message: "Copy bôi đen bị trừ 1 credit!", type: 'error' });
-            alert("Hành động copy bị hạn chế để bảo vệ nội dung. Hệ thống đã trừ 1 Credit phí bản quyền.");
-          }
-        }
-      }
-    };
-
-    const preventContextMenu = (e: MouseEvent) => {
-      if (activeTab === 'preview') e.preventDefault();
-    };
-
-    document.addEventListener('copy', handleIllegalCopy);
-    document.addEventListener('keydown', handleIllegalCopy);
-    document.addEventListener('contextmenu', preventContextMenu);
-    return () => {
-      document.removeEventListener('copy', handleIllegalCopy);
-      document.removeEventListener('keydown', handleIllegalCopy);
-      document.removeEventListener('contextmenu', preventContextMenu);
-    };
-  }, [user, credits, activeTab]);
 
   const handleGuestLogin = async () => {
     setAuthLoading(true);
@@ -337,7 +315,6 @@ export default function App() {
     if (!content.trim()) return;
     const canProceed = await deductCredit();
     if (!canProceed) return;
-
     setIsAiProcessing(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -369,18 +346,17 @@ export default function App() {
     const previousContent = textarea.value;
     const newContent = previousContent.substring(0, start) + textBefore + previousContent.substring(start, end) + textAfter + previousContent.substring(end);
     
-    // Áp dụng autoFormat (Đã sửa logic)
+    // Áp dụng autoFormat (logic có sẵn của bạn)
     const formatted = autoFormatMath(newContent);
     setContent(formatted);
     setPreviewContent(formatted);
-
     setTimeout(() => {
       if (textareaRef.current) {
         textareaRef.current.focus();
         textareaRef.current.setSelectionRange(start + textBefore.length, end + textBefore.length);
       }
     }, 0);
-  }, []);
+  }, [content]);
 
   const handleDrawingSubmit = async (data: string) => {
     if (data.startsWith('LATEX_RAW:')) {
@@ -496,7 +472,6 @@ export default function App() {
              </div>
            </div>
 
-           {/* AVATAR & DROPDOWN MENU */}
            <div className="relative" onClick={(e) => e.stopPropagation()}>
              <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 hover:bg-white transition-all">
                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-md ${user.isGuest ? 'bg-orange-500' : 'bg-indigo-600'}`}>
@@ -517,23 +492,14 @@ export default function App() {
                         <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider flex items-center gap-1"><ShieldCheck size={10}/> Đã xác thực</p>
                       </div>
                     </div>
-                    
                     <div className="space-y-2">
-                       {/* ID Display */}
                        <div className="flex flex-col gap-1">
                           <label className="text-[10px] font-black text-slate-400 uppercase ml-1">ID Tài khoản</label>
-                          <div 
-                            onClick={() => {
-                              navigator.clipboard.writeText(user.uid);
-                              setToast({ message: "Đã copy ID", type: 'success' });
-                            }}
-                            className="flex items-center justify-between gap-2 text-slate-600 text-[11px] font-mono bg-white p-2 rounded-xl border border-indigo-50 cursor-pointer hover:bg-indigo-100/50 transition-colors"
-                          >
+                          <div onClick={() => { navigator.clipboard.writeText(user.uid); setToast({ message: "Đã copy ID", type: 'success' }); }} className="flex items-center justify-between gap-2 text-slate-600 text-[11px] font-mono bg-white p-2 rounded-xl border border-indigo-50 cursor-pointer hover:bg-indigo-100/50 transition-colors">
                             <span className="truncate">{user.uid}</span>
                             <CopyIcon size={12} className="text-slate-400" />
                           </div>
                        </div>
-                       
                        <div className="flex flex-col gap-1">
                           <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Email</label>
                           <div className="flex items-center gap-2 text-slate-500 text-xs bg-white/80 p-2 rounded-xl border border-indigo-50">
@@ -591,12 +557,22 @@ export default function App() {
             ref={textareaRef} 
             value={content} 
             onChange={(e) => {
-               // Apply smart autoFormat logic
                const val = e.target.value;
                const formatted = autoFormatMath(val);
                setContent(formatted);
                setPreviewContent(formatted);
-            }} 
+            }}
+            // TỰ ĐỘNG DỊCH LATEX KHI DÁN (KHÔNG TỐN CREDIT)
+            onPaste={(e) => {
+              const pastedData = e.clipboardData.getData('text');
+              const rawMathRegex = /[∫√∞πΔ±≤≥≠≈×÷′]/;
+              if (rawMathRegex.test(pastedData)) {
+                e.preventDefault();
+                const translated = translateRawPasteToLatex(pastedData);
+                insertTextAtCursor(translated);
+                setToast({ message: "⚡ Tự động định dạng LaTeX (Offline)", type: 'success' });
+              }
+            }}
             className="flex-1 p-8 mono text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800 select-text" 
             placeholder="Dán nội dung vào đây..." 
           />
