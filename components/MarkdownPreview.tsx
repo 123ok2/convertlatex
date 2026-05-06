@@ -22,7 +22,20 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content }) => 
       .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$') // Chuyển \[ \] thành $$ $$
       .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');   // Chuyển \( \) thành $ $
 
-    // --- STEP 2: FIX ADJACENT MATH ---
+    // --- STEP 2: FIX ADJACENT MATH & MULTILINE SEPARATOR ---
+    // Tách riêng các công thức nếu chúng ở các dòng khác nhau trong cùng một block $$...$$
+    text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match, inner) => {
+      // Nếu là môi trường có sẵn cấu trúc nhiều dòng (giữ nguyên)
+      if (inner.includes('\\begin{')) return match;
+      
+      const lines = inner.split('\n').filter((l: string) => l.trim().length > 0);
+      if (lines.length > 1) {
+        // Mỗi dòng xuống dòng được coi là 1 công thức hoàn toàn mới và tách riêng
+        return lines.map((l: string) => `\n\n$$ ${l.trim()} $$\n\n`).join('');
+      }
+      return match;
+    });
+
     text = text.replace(/(^|[^\$])(\$[^\$\n]+\$)(?=\$)/g, '$1$2\n\n');
 
     // --- STEP 3: SMART CSV TO MARKDOWN TABLE CONVERTER ---

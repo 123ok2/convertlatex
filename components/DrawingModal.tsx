@@ -1,6 +1,6 @@
 
 import React, { useRef, useState, useEffect } from 'react';
-import { X, Trash2, Pen, Calculator, Check, Eraser, Keyboard, Grid3X3 } from 'lucide-react';
+import { X, Trash2, Pen, Calculator, Check, Eraser, Keyboard, Grid3X3, Delete } from 'lucide-react';
 import { Button } from './Button';
 
 interface DrawingModalProps {
@@ -99,7 +99,7 @@ export const DrawingModal: React.FC<DrawingModalProps> = ({
   onSubmit,
   isProcessing 
 }) => {
-  const [mode, setMode] = useState<Mode>('draw');
+  const [mode, setMode] = useState<Mode>('type');
   
   // Canvas State
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -118,12 +118,15 @@ export const DrawingModal: React.FC<DrawingModalProps> = ({
         const timer = setTimeout(() => initializeCanvas(), 50);
         return () => clearTimeout(timer);
       } else {
-        // Focus MathField when switching to Type mode
-        setTimeout(() => {
+        // Focus MathField when switching to Type mode or opening
+        const timer = setTimeout(() => {
             if (mfRef.current) {
                 mfRef.current.focus();
+                // Sync internal value to state if it exists
+                setLatexValue(mfRef.current.value);
             }
-        }, 100);
+        }, 150);
+        return () => clearTimeout(timer);
       }
     }
   }, [isOpen, mode]);
@@ -142,8 +145,20 @@ export const DrawingModal: React.FC<DrawingModalProps> = ({
     if (!mf || mode !== 'type') return;
 
     const handleInput = (evt: any) => setLatexValue(evt.target.value);
+    const handleKeyDown = (evt: KeyboardEvent) => {
+        if (evt.code === 'Space') {
+            evt.preventDefault();
+            handleSpace();
+        }
+    };
+
     mf.addEventListener('input', handleInput);
-    return () => mf.removeEventListener('input', handleInput);
+    mf.addEventListener('keydown', handleKeyDown as any);
+    
+    return () => {
+        mf.removeEventListener('input', handleInput);
+        mf.removeEventListener('keydown', handleKeyDown as any);
+    };
   }, [isOpen, mode]);
 
   // --- CANVAS LOGIC ---
@@ -246,23 +261,48 @@ export const DrawingModal: React.FC<DrawingModalProps> = ({
     if (mode === 'draw') {
         if (canvasRef.current) {
             const imageData = canvasRef.current.toDataURL('image/png');
-            onSubmit(imageData); // Send base64 image
+            onSubmit(imageData);
         }
     } else {
-        if (!latexValue.trim()) {
+        // Direct extraction from DOM for absolute reliability
+        const mf = mfRef.current || document.querySelector('math-field');
+        const value = mf ? (mf as any).value : latexValue;
+        
+        console.log('Submitting LaTeX:', value); // Debug log (internal)
+
+        if (!value || !value.trim()) {
             onClose();
             return;
         }
-        onSubmit("LATEX_RAW:" + latexValue); // Send raw LaTeX with prefix
+        
+        onSubmit("LATEX_RAW:" + value.trim());
+    }
+  };
+
+  const handleSpace = () => {
+      const mf = mfRef.current || document.querySelector('math-field');
+      if (mf) {
+          // Inserting a regular LaTeX space
+          (mf as any).executeCommand(['insert', '\\ ']); 
+          mf.focus();
+      }
+  };
+
+  const handleBackspace = () => {
+    const mf = mfRef.current || document.querySelector('math-field');
+    if (mf) {
+        (mf as any).executeCommand('deleteBackward');
+        mf.focus();
     }
   };
 
   const clearMathField = () => {
-      if (mfRef.current) {
-          mfRef.current.value = '';
-          setLatexValue('');
-          mfRef.current.focus();
-      }
+    const mf = mfRef.current || document.querySelector('math-field');
+    if (mf) {
+        (mf as any).value = "";
+        setLatexValue("");
+        mf.focus();
+    }
   };
 
   if (!isOpen) return null;
@@ -276,24 +316,9 @@ export const DrawingModal: React.FC<DrawingModalProps> = ({
         <div className="flex flex-col border-b border-slate-200 bg-slate-50 flex-none">
             <div className="flex items-center justify-between p-3">
                 <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    Công cụ nhập liệu (Toán - Lý - Hóa)
+                    <Calculator className="w-5 h-5 text-indigo-600" /> MathType Online (Toán - Lý - Hóa)
                 </h3>
                 <button onClick={onClose} className="text-slate-400 hover:text-slate-600 bg-white rounded-full p-1 hover:bg-slate-100"><X className="w-6 h-6" /></button>
-            </div>
-            
-            <div className="flex px-4 gap-2">
-                <button 
-                    onClick={() => setMode('draw')}
-                    className={`flex-1 py-3 text-sm font-semibold border-b-2 flex items-center justify-center gap-2 transition-colors ${mode === 'draw' ? 'border-indigo-600 text-indigo-700 bg-white rounded-t-lg' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'}`}
-                >
-                    <Pen className="w-4 h-4" /> Vẽ tay
-                </button>
-                <button 
-                    onClick={() => setMode('type')}
-                    className={`flex-1 py-3 text-sm font-semibold border-b-2 flex items-center justify-center gap-2 transition-colors ${mode === 'type' ? 'border-indigo-600 text-indigo-700 bg-white rounded-t-lg' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'}`}
-                >
-                    <Calculator className="w-4 h-4" /> Bàn phím (MathType)
-                </button>
             </div>
         </div>
 
@@ -337,15 +362,21 @@ export const DrawingModal: React.FC<DrawingModalProps> = ({
                 <div className="flex-1 flex flex-col gap-4 overflow-hidden h-full">
                     
                     {/* INPUT FIELD AREA - Fixed height at top */}
-                    <div className="bg-white p-3 rounded-lg shadow-sm border border-slate-200 flex-none flex flex-col">
-                        <div className="flex justify-between items-center mb-2">
-                            <span className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Hiển thị kết quả:</span>
-                            <div className="flex gap-2">
-                                <Button variant="ghost" onClick={toggleVirtualKeyboard} className="text-indigo-600 hover:bg-indigo-50 text-xs px-2 py-1 h-7">
-                                    <Keyboard className="w-3 h-3 mr-1" /> Bàn phím ảo
+                    <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-200 flex-none flex flex-col">
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider hidden sm:block">Hiển thị kết quả:</span>
+                            <div className="flex gap-1 ml-auto overflow-x-auto custom-scrollbar pb-1">
+                                <Button variant="ghost" onClick={handleSpace} className="text-slate-600 hover:bg-slate-100 text-[9px] px-2 py-0.5 h-5 whitespace-nowrap bg-slate-50 border border-slate-200 ml-auto">
+                                    Dấu cách
                                 </Button>
-                                <Button variant="ghost" onClick={clearMathField} className="text-red-500 hover:text-red-600 text-xs px-2 py-1 h-7">
-                                    <Eraser className="w-3 h-3 mr-1" /> Xóa
+                                <Button variant="ghost" onClick={handleBackspace} className="text-orange-500 hover:text-orange-600 hover:bg-orange-50 text-[9px] px-2 py-0.5 h-5 whitespace-nowrap bg-slate-50 border border-slate-200">
+                                    <Delete className="w-2.5 h-2.5 mr-1" /> Xóa 1 ký tự
+                                </Button>
+                                <Button variant="ghost" onClick={clearMathField} className="text-red-500 hover:text-red-600 hover:bg-red-50 text-[9px] px-2 py-0.5 h-5 whitespace-nowrap bg-slate-50 border border-slate-200">
+                                    <Eraser className="w-2.5 h-2.5 mr-1" /> Xóa tất cả
+                                </Button>
+                                <Button variant="ghost" onClick={toggleVirtualKeyboard} className="text-indigo-600 hover:bg-indigo-50 text-[9px] px-2 py-0.5 h-5 whitespace-nowrap bg-slate-50 border border-slate-200">
+                                    <Keyboard className="w-2.5 h-2.5 mr-1" /> Bàn phím ảo
                                 </Button>
                             </div>
                         </div>
@@ -356,34 +387,34 @@ export const DrawingModal: React.FC<DrawingModalProps> = ({
                                 style: { 
                                     width: '100%', 
                                     display: 'block', 
-                                    fontSize: '32px', // Larger font
-                                    padding: '20px',
-                                    minHeight: '80px',
+                                    fontSize: '20px', // Even Smaller font
+                                    padding: '8px',
+                                    minHeight: '40px',
                                     backgroundColor: 'white'
                                 }
-                            }, latexValue)}
+                            })}
                         </div>
                     </div>
 
                     {/* EXPANDED SHORTCUTS GRID - Scrollable area */}
-                    <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex-1 overflow-hidden flex flex-col">
-                        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100">
-                             <Grid3X3 className="w-4 h-4 text-indigo-600" />
-                             <span className="text-sm font-bold text-slate-700">Ký hiệu nhanh (Toán - Lý - Hóa)</span>
+                    <div className="bg-white p-2 sm:p-2 rounded-lg shadow-sm border border-slate-200 flex-1 overflow-hidden flex flex-col">
+                        <div className="flex items-center gap-1.5 mb-2 pb-1.5 border-b border-slate-100">
+                             <Grid3X3 className="w-3 h-3 text-indigo-600" />
+                             <span className="text-xs font-bold text-slate-700">Ký hiệu nhanh (Toán - Lý - Hóa)</span>
                         </div>
                         
                         <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-                            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
+                            <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-11 lg:grid-cols-14 xl:grid-cols-16 gap-1">
                                 {ALL_MATH_ITEMS.map((item, idx) => (
                                     <button
                                         key={idx}
                                         onClick={() => insertMath(item.latex)}
-                                        className="h-12 flex flex-col items-center justify-center bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-400 rounded-lg text-slate-800 hover:text-indigo-700 transition-all active:scale-95 group relative"
+                                        className="h-8 flex flex-col items-center justify-center bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-400 rounded-md text-slate-800 hover:text-indigo-700 transition-all active:scale-95 group relative"
                                         title={item.desc}
                                     >
-                                        <span className="font-serif text-lg leading-none">{item.label}</span>
+                                        <span className="font-serif text-sm leading-none">{item.label}</span>
                                         {/* Tooltip nhỏ khi hover */}
-                                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                                        <span className="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[9px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
                                             {item.desc}
                                         </span>
                                     </button>

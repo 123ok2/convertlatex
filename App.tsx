@@ -81,14 +81,34 @@ const generateFingerprint = () => {
  */
 const autoFormatMath = (text: string): string => {
   const lines = text.split('\n');
+  let inMathBlock = false;
   const formattedLines = lines.map(line => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 2) {
+      return line;
+    }
+    if (trimmed === '$$') {
+      inMathBlock = !inMathBlock;
+      return line;
+    }
+    if (inMathBlock) return line;
     if (line.includes('$')) return line;
+    
     let p = line;
+    
+    // Xử lý các tiền tố hóa học/toán học phổ biến
     p = p.replace(/∫(\w)(\w)\s?([^=\n]+)/g, "\\int_{$1}^{$2} $3");
     p = p.replace(/√(\w)/g, "\\sqrt{$1}").replace(/√\(([^)]+)\)/g, "\\sqrt{$1}");
     p = p.replace(/vt([A-Z]{1,2})/g, "\\overrightarrow{$1}");
     p = p.replace(/g([A-Z]{3})/g, "\\widehat{$1}");
-    const hasLatexCommand = /\\int|\\sqrt|\\overrightarrow|\\widehat|\^|_/.test(p);
+    
+    // Nhận diện các biểu thức dạng phân số đơn giản: C% = mct/mdd * 100%
+    if (p.includes('/') && !p.includes('http') && p.includes('=')) {
+        // Thử chuyển đổi x/y thành \frac{x}{y}
+        p = p.replace(/([a-zA-Z0-9_{}\(\)]+)\/([a-zA-Z0-9_{}\(\)]+)/g, "\\frac{$1}{$2}");
+    }
+
+    const hasLatexCommand = /\\int|\\sqrt|\\overrightarrow|\\widehat|\\frac|\^|_/.test(p);
     if (hasLatexCommand && !p.includes('$$') && p.trim().length > 0) {
       return `$$ ${p.trim()} $$`;
     }
@@ -98,42 +118,122 @@ const autoFormatMath = (text: string): string => {
 };
 
 /**
- * TỰ ĐỘNG DỊCH VĂN BẢN TOÁN HỌC THÔ SANG LATEX (KHI DÁN) - KHÔNG DÙNG AI
+ * TỰ ĐỘNG DỊCH VÀ CHUẨN HÓA VĂN BẢN TOÁN HỌC (TỪ AI HOẶC TEXT THÔ)
  */
-const translateRawPasteToLatex = (text: string): string => {
+const formatAiPastedContent = (text: string): string => {
   let p = text;
-  
-  // 1. Thay thế các ký hiệu đơn lẻ
+
+  // 1. Chuẩn hóa định dạng của AI: \( \) -> $ $ và \[ \] -> $$ $$
+  p = p.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
+  p = p.replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+
+  // Đôi khi có thêm dấu ngoặc kép bọc quanh: "\(...\)" -> $...$ 
+  p = p.replace(/"\$\$(.*?)\$\$"/g, '$$$$$1$$$$');
+  p = p.replace(/"\$(.*?)\$"/g, '$$$1$$');
+
+  // Đôi khi AI trả về markdown có dạng ```latex ... ```
+  p = p.replace(/```latex\n([\s\S]*?)\n```/g, '$$$$\n$1\n$$$$');
+  p = p.replace(/```math\n([\s\S]*?)\n```/g, '$$$$\n$1\n$$$$');
+
+  // Sửa lỗi công thức dính vào nhau hoặc thiếu line break:
+  p = p.replace(/(^|[^\$])(\$\$[^\$]+\$\$)(?=\$)/g, '$1$2\n\n');
+
+  // 2. Chuyển đổi các ký hiệu toán học unicode thô thành LaTeX
   p = p.replace(/∫/g, '\\int ')
-       .replace(/√/g, '\\sqrt')
        .replace(/∞/g, '\\infty ')
        .replace(/π/g, '\\pi ')
        .replace(/α/g, '\\alpha ')
        .replace(/β/g, '\\beta ')
+       .replace(/γ/g, '\\gamma ')
+       .replace(/θ/g, '\\theta ')
        .replace(/Δ/g, '\\Delta ')
+       .replace(/Ω/g, '\\Omega ')
        .replace(/±/g, '\\pm ')
        .replace(/≤/g, '\\le ')
        .replace(/≥/g, '\\ge ')
-       .replace(/≠/g, '\\ne ')
+       .replace(/≠/g, '\\neq ')
        .replace(/≈/g, '\\approx ')
        .replace(/×/g, '\\times ')
        .replace(/÷/g, '\\div ')
-       .replace(/′/g, "'");
+       .replace(/′/g, "'")
+       .replace(/→/g, '\\rightarrow ')
+       .replace(/⇔/g, '\\Leftrightarrow ')
+       .replace(/⇒/g, '\\Rightarrow ');
 
-  // 2. Xử lý vi phân dx/dy/dt dính liền
-  p = p.replace(/(\w)dx/g, '$1 \\,dx')
-       .replace(/(\w)dy/g, '$1 \\,dy')
-       .replace(/(\w)dt/g, '$1 \\,dt');
+  // 2.5 Escape các ký tự % thô để LaTeX hiểu (tránh biến thành comment trong math block)
+  p = p.replace(/([^\\]|^)%/g, '$1\\%');
 
-  // 3. Tự động bao bọc $$ cho các dòng chứa ký hiệu toán học
+  // 3. Xử lý vi phân (dx, dy, dt) khi nó đứng độc lập
+  p = p.replace(/(^|\s)(\d*[a-zA-Z]?)dx(\s|$)/g, '$1$2 \\,dx$3')
+       .replace(/(^|\s)(\d*[a-zA-Z]?)dy(\s|$)/g, '$1$2 \\,dy$3')
+       .replace(/(^|\s)(\d*[a-zA-Z]?)dt(\s|$)/g, '$1$2 \\,dt$3');
+
+  // 4. Xử lý căn bậc hai dạng √x hoặc √(x+y)
+  p = p.replace(/√\(([^)]+)\)/g, '\\sqrt{$1}')
+       .replace(/√([a-zA-Z0-9]+)/g, '\\sqrt{$1}');
+       
+  // 5. Xử lý các biến có chỉ số dưới viết liền (mdd -> m_{dd}, mct -> m_{ct})
+  // Thường thấy trong hóa học: mct, mdd, nH2, Vdd, CM, C%
+  p = p.replace(/\b(m|n|V|C)(dd|ct|H2|O2|CO2|H2O|HCl|NaOH|H2SO4)\b/g, '$1_{$2}');
+  
+  // Đặc trị pattern C% = mct/mdd * 100% khi bị mất dấu phân số hoặc dính chữ
+  p = p.replace(/C\\%\s?=\s?(mct|m_{ct})\s?(mdd|m_{dd})\s?(\\times|\*|×)\s?100\\\%/g, "C\\% = \\frac{m_{ct}}{m_{dd}} \\times 100\\%");
+  p = p.replace(/C\\%\s?=\s?(mdd|m_{dd})\s?(mct|m_{ct})\s?(\\times|\*|×)\s?100\\\%/g, "C\\% = \\frac{m_{ct}}{m_{dd}} \\times 100\\%"); // Đôi khi bị đảo
+  
+  // Xử lý n và V cho các chất khí/lỏng phổ biến
+  p = p.replace(/\b(n|V|m)([A-Z][a-z]?\d?)\b/g, '$1_{$2}');
+
+  // 6. Xử lý phân số dạng a/b thành \frac{a}{b} nếu nằm trong dòng có vẻ là toán
+  const handleFractions = (line: string) => {
+    if (!line.includes('/') || line.includes('http')) return line;
+    // Tìm x/y trong đó x, y là cụm ký tự toán học
+    return line.replace(/([a-zA-Z0-9_{}\(\)\%]+)\s?\/\s?([a-zA-Z0-9_{}\(\)\%]+)/g, "\\frac{$1}{$2}");
+  };
+
+  // 7. Tự động bọc $$ cho các dòng toán học nếu AI quên
   const lines = p.split('\n');
+  let inAiMathBlock = false;
   const formattedLines = lines.map(line => {
-    const hasMathSymbol = /\\int|\\sqrt|\\alpha|\\beta|\\Delta|\\infty|\^|_|=/.test(line);
-    // Nếu dòng chứa ký hiệu toán học và chưa được bọc bởi $ hoặc $$
-    if (hasMathSymbol && !line.trim().startsWith('$')) {
-      return `$$ ${line.trim()} $$`;
+    let currentLine = line;
+    const trimmed = currentLine.trim();
+    
+    if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 2) {
+      return currentLine;
     }
-    return line;
+    if (trimmed === '$$') {
+      inAiMathBlock = !inAiMathBlock;
+      return currentLine;
+    }
+    if (inAiMathBlock) return currentLine;
+
+    // Áp dụng xử lý phân số cho dòng không phải block
+    if (trimmed && !trimmed.includes('$')) {
+        currentLine = handleFractions(currentLine);
+    }
+
+    // Nếu dòng trống hoặc đã có ký hiệu latex block inline
+    if (!trimmed || currentLine.includes('$')) return currentLine;
+    
+    // Nhận diện dòng chứa biểu thức toán
+    const mathMatch = currentLine.match(/\\int|\\sqrt|\\frac|\\sin|\\cos|\\tan|\\lim|\\sum|\\Delta|\\alpha|\\beta|\\gamma|\\theta|\^|_|\\times|\\div|\\leq|\\geq|\\neq/g);
+    
+    // Đếm số lượng từ thông thường để xét xem đây là câu văn hay phương trình
+    const normalWordsMatch = trimmed.match(/[a-zA-Z]{4,}/g);
+    const normalWordsCount = normalWordsMatch ? normalWordsMatch.length : 0;
+    
+    // Nếu có ít nhất 1 ký hiệu toán và ít từ bình thường, hoặc có dấu = và ký hiệu toán
+    if ((mathMatch && mathMatch.length >= 1 && normalWordsCount <= 3) || 
+        (currentLine.includes('=') && mathMatch)) {
+      return `$$ ${currentLine.trim()} $$`;
+    }
+    
+    // Nếu chỉ là một phương trình đơn giản như x^2 + y^2 = 1 hoặc C% = ...
+    if (/^[a-zA-Z0-9\+\-\=\^\_\(\)\s\%\/\\\{\}]+$/.test(trimmed) && trimmed.includes('=') && 
+       (trimmed.includes('^') || trimmed.includes('_') || trimmed.includes('/') || trimmed.includes('\\'))) {
+      return `$$ ${currentLine.trim()} $$`;
+    }
+
+    return currentLine;
   });
 
   return formattedLines.join('\n');
@@ -311,32 +411,17 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  const handleAIEnhance = useCallback(async () => {
+  const handleOfflineEnhance = useCallback(() => {
     if (!content.trim()) return;
-    const canProceed = await deductCredit();
-    if (!canProceed) return;
-    setIsAiProcessing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
-        contents: content,
-        config: { 
-          systemInstruction: "Bạn là chuyên gia định dạng Markdown và LaTeX. Hãy làm đẹp nội dung toán học và bảng biểu. Trả về Markdown thuần.",
-          thinkingConfig: { thinkingBudget: 0 }
-        }
-      });
-      if (response.text) {
-        setContent(response.text);
-        setPreviewContent(response.text);
-        setToast({ message: "✨ Đã tối ưu hóa nội dung", type: 'success' });
-      }
+      const formatted = formatAiPastedContent(content);
+      setContent(formatted);
+      setPreviewContent(formatted);
+      setToast({ message: "✨ Đã tối ưu hóa định dạng (Offline)", type: 'success' });
     } catch (error) {
-      setToast({ message: "Lỗi AI: " + error, type: 'error' });
-    } finally {
-      setIsAiProcessing(false);
+      setToast({ message: "Lỗi xử lý: " + error, type: 'error' });
     }
-  }, [content, user, credits]);
+  }, [content]);
 
   const insertTextAtCursor = useCallback((textBefore: string, textAfter: string = '') => {
     const textarea = textareaRef.current;
@@ -361,26 +446,43 @@ export default function App() {
   const handleDrawingSubmit = async (data: string) => {
     if (data.startsWith('LATEX_RAW:')) {
       const latex = data.replace('LATEX_RAW:', '');
-      insertTextAtCursor(`$$ ${latex} $$`);
+      if (!latex.trim()) {
+        setIsDrawingModalOpen(false);
+        return;
+      }
+      // Chèn có xuống dòng để autoFormatMath nhận diện đúng là block
+      insertTextAtCursor(`\n$$ ${latex.trim()} $$\n`);
       setIsDrawingModalOpen(false);
+      setToast({ message: "✨ Đã chèn công thức", type: 'success' });
     } else {
       setIsAiProcessing(true);
       try {
         if (await deductCredit()) {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY!);
+          const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
           const base64Data = data.split(',')[1];
-          const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: { parts: [{ inlineData: { mimeType: 'image/png', data: base64Data } }, { text: "Convert to LaTeX. Return ONLY string." }] },
-          });
-          if (response.text) {
-            insertTextAtCursor(`$$ ${response.text.trim()} $$`);
+          
+          const result = await model.generateContent([
+            {
+              inlineData: {
+                mimeType: 'image/png',
+                data: base64Data
+              }
+            },
+            {
+              text: "Convert this handwritten math/physics/chemistry formula to LaTeX. Return ONLY the LaTeX string without any markdown formatting or dollar signs."
+            }
+          ]);
+          
+          const text = result.response.text();
+          if (text) {
+            insertTextAtCursor(`\n$$ ${text.trim()} $$\n`);
             setToast({ message: "✨ Đã nhận diện công thức", type: 'success' });
             setIsDrawingModalOpen(false);
           }
         }
-      } catch (error) {
-        setToast({ message: "Lỗi nhận diện: " + error, type: 'error' });
+      } catch (error: any) {
+        setToast({ message: "Lỗi nhận diện: " + error.message, type: 'error' });
       } finally {
         setIsAiProcessing(false);
       }
@@ -521,34 +623,155 @@ export default function App() {
 
       <Toolbar 
         onInsert={insertTextAtCursor} 
-        onVoiceInput={() => { setToast({ message: "Tính năng đang phát triển", type: 'info' }) }} 
-        isListening={false} 
         onOpenDrawing={() => setIsDrawingModalOpen(true)} 
         onFileUpload={handleFileUpload} 
         fileInputRef={fileInputRef}
-        onManualPreview={() => {setPreviewContent(content); setActiveTab('preview');}} 
-        onAIEnhance={handleAIEnhance} isAiProcessing={isAiProcessing} isDeducting={isDeducting}
         onCopyFormatted={async () => {
           const previewEl = document.getElementById('markdown-preview-content');
           if (previewEl && await deductCredit()) {
-             const blob = new Blob([previewEl.innerHTML], { type: "text/html" });
-             await navigator.clipboard.write([new ClipboardItem({ ["text/html"]: blob })]);
-             setToast({ message: "✅ Đã sao chép định dạng", type: 'success' });
+             try {
+                const clone = previewEl.cloneNode(true) as HTMLElement;
+                
+                // 1. Dọn dẹp: Xóa phần KaTeX HTML thừa
+                clone.querySelectorAll('.katex-html').forEach(el => el.remove());
+                
+                // 2. Tối ưu MathML cho Word: Phân biệt inline và block
+                clone.querySelectorAll('.katex-mathml').forEach(el => {
+                  const isBlock = el.closest('.katex-display') !== null;
+                  const style = (el as HTMLElement).style;
+                  style.display = isBlock ? 'block' : 'inline';
+                  style.clip = 'auto';
+                  style.height = 'auto';
+                  style.width = 'auto';
+                  style.overflow = 'visible';
+                  if (isBlock) {
+                    style.textAlign = 'center';
+                    style.margin = '10pt 0';
+                  }
+                });
+
+                // 3. Xóa các class Tailwind để tránh Word bị rối (giữ cấu trúc trần)
+                const allElements = clone.querySelectorAll('*');
+                allElements.forEach(el => {
+                    el.removeAttribute('class');
+                    // Word ưu tiên thuộc tính style trực tiếp
+                    if (el.tagName === 'TABLE') {
+                        (el as HTMLElement).style.borderCollapse = 'collapse';
+                        (el as HTMLElement).style.width = '100%';
+                        (el as HTMLElement).style.border = '1px solid black';
+                    }
+                    if (el.tagName === 'TD' || el.tagName === 'TH') {
+                        (el as HTMLElement).style.border = '1px solid black';
+                        (el as HTMLElement).style.padding = '5pt';
+                    }
+                });
+                
+                const fullHtml = `
+                  <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+                  <head>
+                    <meta charset='utf-8'>
+                    <!--[if gte mso 9]>
+                    <xml>
+                      <w:WordDocument>
+                        <w:View>Print</w:View>
+                        <w:DoNotOptimizeForBrowser/>
+                      </w:WordDocument>
+                    </xml>
+                    <![endif]-->
+                    <style>
+                      body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; color: black; }
+                      h1 { font-size: 18pt; color: #1e40af; font-weight: bold; }
+                      h2 { font-size: 16pt; color: #1e40af; font-weight: bold; }
+                      h3 { font-size: 14pt; color: #1e40af; font-weight: bold; }
+                      p { margin-bottom: 10pt; }
+                      table { margin-bottom: 15pt; }
+                    </style>
+                  </head>
+                  <body>
+                    ${clone.innerHTML}
+                  </body>
+                  </html>
+                `;
+                
+                const blob = new Blob([fullHtml], { type: "text/html" });
+                const textBlob = new Blob([clone.innerText], { type: "text/plain" });
+                
+                window.focus();
+                
+                await navigator.clipboard.write([
+                  new ClipboardItem({ 
+                    ["text/html"]: blob,
+                    ["text/plain"]: textBlob
+                  })
+                ]);
+                setToast({ message: "✅ Đã sao chép định dạng tối ưu cho Word", type: 'success' });
+             } catch (err: any) {
+                console.error('Clipboard error:', err);
+                setToast({ message: "❌ Lỗi clipboard: Hãy click vào trang web trước khi nhấn Copy", type: 'error' });
+             }
           }
         }} 
         onPrint={async () => { if (await deductCredit()) window.print(); }} 
         onExportWord={async () => {
           const previewEl = document.getElementById('markdown-preview-content');
           if (previewEl && await deductCredit()) {
-             const fullHtml = `<html><head><meta charset='utf-8'></head><body>${previewEl.innerHTML}</body></html>`;
+             const clone = previewEl.cloneNode(true) as HTMLElement;
+             
+             // 1. Dọn dẹp tương tự copy
+             clone.querySelectorAll('.katex-html').forEach(el => el.remove());
+             clone.querySelectorAll('.katex-mathml').forEach(el => {
+                const isBlock = el.closest('.katex-display') !== null;
+                const style = (el as HTMLElement).style;
+                style.display = isBlock ? 'block' : 'inline';
+                style.clip = 'auto';
+                style.height = 'auto';
+                style.width = 'auto';
+                style.overflow = 'visible';
+                if (isBlock) {
+                    style.textAlign = 'center';
+                    style.margin = '12pt 0';
+                }
+             });
+
+             const allElements = clone.querySelectorAll('*');
+             allElements.forEach(el => {
+                 el.removeAttribute('class');
+                 if (el.tagName === 'TABLE') (el as HTMLElement).style.borderCollapse = 'collapse';
+             });
+
+             const fullHtml = `
+               <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+               <head>
+                 <meta charset='utf-8'>
+                 <!--[if gte mso 9]>
+                 <xml>
+                   <w:WordDocument>
+                     <w:View>Print</w:View>
+                   </w:WordDocument>
+                 </xml>
+                 <![endif]-->
+                 <style>
+                   body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; color: black; }
+                   table { border: 1px solid black; border-collapse: collapse; width: 100%; }
+                   th, td { border: 1px solid black; padding: 5pt; }
+                   h1, h2, h3 { color: #1e40af; font-weight: bold; }
+                 </style>
+               </head>
+               <body>
+                 ${clone.innerHTML}
+               </body>
+               </html>
+             `;
              const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
              const link = document.createElement('a');
              link.href = URL.createObjectURL(blob);
-             link.download = `Doc_${Date.now()}.doc`;
+             link.download = `Document_${Date.now()}.doc`;
              link.click();
+             setToast({ message: "📁 Đã xuất file Word thành công", type: 'success' });
           }
         }} 
         onClear={() => { if (confirm('Xóa toàn bộ nội dung?')) setContent(''); }}
+        onOptimize={handleOfflineEnhance}
       />
 
       <main className="flex-1 flex overflow-hidden">
@@ -562,22 +785,22 @@ export default function App() {
                setContent(formatted);
                setPreviewContent(formatted);
             }}
-            // TỰ ĐỘNG DỊCH LATEX KHI DÁN (KHÔNG TỐN CREDIT)
+            // TỰ ĐỘNG DỊCH LATEX KHI DÁN KỂ CẢ TỪ AI (KHÔNG TỐN CREDIT)
             onPaste={(e) => {
               const pastedData = e.clipboardData.getData('text');
-              const rawMathRegex = /[∫√∞πΔ±≤≥≠≈×÷′]/;
-              if (rawMathRegex.test(pastedData)) {
+              const aiAiMathRegex = /[∫√∞πΔ±≤≥≠≈×÷′\\]|\\\[|\\\(|\$\$/;
+              if (aiAiMathRegex.test(pastedData) || pastedData.includes('\\[') || pastedData.includes('\\(')) {
                 e.preventDefault();
-                const translated = translateRawPasteToLatex(pastedData);
-                insertTextAtCursor(translated);
-                setToast({ message: "⚡ Tự động định dạng LaTeX (Offline)", type: 'success' });
+                const formatted = formatAiPastedContent(pastedData);
+                insertTextAtCursor(formatted);
+                setToast({ message: "⚡ Tự động tối ưu định dạng từ AI (Offline)", type: 'success' });
               }
             }}
-            className="flex-1 p-8 mono text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800 select-text" 
+            className="flex-1 p-8 mono text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800 select-text overflow-y-auto custom-scrollbar" 
             placeholder="Dán nội dung vào đây..." 
           />
         </div>
-        <div className={`flex flex-col flex-1 bg-white overflow-y-auto custom-scrollbar transition-all pointer-events-none ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`flex flex-col flex-1 bg-white overflow-y-auto custom-scrollbar transition-all ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
            <div className="flex-1 py-12 px-8 md:px-16 max-w-4xl mx-auto w-full">
               <MarkdownPreview content={previewContent || content} />
            </div>

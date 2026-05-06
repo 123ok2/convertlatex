@@ -9,36 +9,26 @@ import { Button } from './Button';
 
 interface ToolbarProps {
   onInsert: (before: string, after?: string) => void;
-  onVoiceInput: () => void;
-  isListening: boolean;
   onOpenDrawing: () => void;
   onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
-  onManualPreview: () => void;
-  onAIEnhance: () => void;
-  isAiProcessing: boolean;
-  isDeducting: boolean;
   onCopyFormatted: () => void;
   onPrint: () => void;
   onExportWord: () => void;
   onClear: () => void;
+  onOptimize: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
   onInsert,
-  onVoiceInput,
-  isListening,
   onOpenDrawing,
   onFileUpload,
   fileInputRef,
-  onManualPreview,
-  onAIEnhance,
-  isAiProcessing,
-  isDeducting,
   onCopyFormatted,
   onPrint,
   onExportWord,
-  onClear
+  onClear,
+  onOptimize
 }) => {
   
   // Fix: Set children to optional to resolve Property 'children' is missing error in strict environments
@@ -87,34 +77,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
         {/* Công cụ nhập liệu */}
         <ToolGroup label="Nhập liệu">
-          <ToolButton onClick={onVoiceInput} active={isListening} icon={<Mic />} title="Giọng nói" />
-          <ToolButton onClick={onOpenDrawing} icon={<Calculator />} title="Vẽ công thức" />
+          <ToolButton onClick={onOpenDrawing} icon={<Calculator />} title="MathType Online" />
+          <ToolButton onClick={onOptimize} icon={<Sparkles />} title="Tối ưu Toán học (Offline)" />
         </ToolGroup>
       </div>
 
       <div className="flex items-center gap-3">
-        {/* Nhóm AI chính */}
-        <div className="flex items-center bg-indigo-50 p-1 rounded-xl border border-indigo-100 shadow-inner">
-           <Button 
-              variant="ghost" 
-              onClick={onManualPreview}
-              className="!py-2 !px-4 text-sm font-semibold text-indigo-700 hover:bg-white hover:shadow-sm transition-all"
-           >
-              <Eye size={18} className="mr-2" /> Xem trước
-           </Button>
-           <Button 
-              variant="primary"
-              onClick={onAIEnhance}
-              disabled={isAiProcessing || isDeducting}
-              className="!py-2 !px-4 text-sm font-semibold shadow-indigo-200"
-           >
-              {isAiProcessing ? <Loader2 size={18} className="animate-spin mr-2" /> : <Sparkles size={18} className="mr-2" />}
-              Tối ưu AI
-           </Button>
-        </div>
-
-        <div className="h-8 w-px bg-slate-200 mx-2"></div>
-
         {/* Nhóm Xuất bản */}
         <div className="flex items-center gap-1">
           <ToolButton onClick={onCopyFormatted} icon={<Copy />} title="Sao chép (-1 Credit)" />
