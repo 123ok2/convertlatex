@@ -1,55 +1,44 @@
-// File: /api/export-docx.js
 import { Document, Packer, Paragraph, TextRun, AlignmentType } from 'docx';
 
 export default async function handler(req, res) {
-    // 1. Chỉ nhận dữ liệu gửi lên (POST)
+    // --- QUAN TRỌNG: Cấu hình CORS để cho phép Extension kết nối ---
+    res.setHeader('Access-Control-Allow-Credentials', true);
+    res.setHeader('Access-Control-Allow-Origin', '*'); // Cho phép tất cả các nguồn
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+    res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+
+    // Xử lý lệnh kiểm tra kết nối (Preflight request)
+    if (req.method === 'OPTIONS') {
+        res.status(200).end();
+        return;
+    }
+
     if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method not allowed' });
+        return res.status(405).json({ error: 'Chỉ chấp nhận POST' });
     }
 
     try {
         const { content, title } = req.body;
 
-        // 2. Tạo nội dung file Word với Font Times New Roman
         const doc = new Document({
             sections: [{
-                properties: {},
                 children: [
                     new Paragraph({
                         alignment: AlignmentType.CENTER,
-                        children: [
-                            new TextRun({
-                                text: title || "GIÁO ÁN ĐIỆN TỬ",
-                                bold: true,
-                                size: 28, // 14pt
-                                font: "Times New Roman",
-                            }),
-                        ],
+                        children: [new TextRun({ text: title || "GIÁO ÁN", bold: true, size: 28, font: "Times New Roman" })],
                         spacing: { after: 400 },
                     }),
-                    // Chia nhỏ nội dung theo dòng để tạo Paragraph
-                    ...content.split('\n').map(line => (
-                        new Paragraph({
-                            children: [
-                                new TextRun({
-                                    text: line,
-                                    size: 26, // 13pt
-                                    font: "Times New Roman",
-                                }),
-                            ],
-                            spacing: { line: 360 }, // Giãn dòng 1.5
-                        })
-                    )),
-                ],
-            }],
+                    ...content.split('\n').map(line => new Paragraph({
+                        children: [new TextRun({ text: line, size: 26, font: "Times New Roman" })],
+                        spacing: { line: 360 }
+                    }))
+                ]
+            }]
         });
 
-        // 3. Đóng gói thành Buffer (dữ liệu file)
         const buffer = await Packer.toBuffer(doc);
-
-        // 4. Trả file về cho trình duyệt
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-        res.setHeader('Content-Disposition', 'attachment; filename=GiaoAn_DuyHanh.docx');
+        res.setHeader('Content-Disposition', 'attachment; filename=GiaoAn_DuyHanhMath.docx');
         res.send(buffer);
 
     } catch (error) {
