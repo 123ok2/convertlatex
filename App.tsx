@@ -842,3 +842,16 @@ export default function App() {
     </div>
   );
 }
+
+
+
+// Trong App.tsx hoặc component chính
+useEffect(() => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const content = urlParams.get('content');
+  if (content) {
+    // Giả sử bạn có hàm setInputText để đưa nội dung vào khung xử lý
+    setInputText(decodeURIComponent(content));
+    // Có thể tự động kích hoạt hàm chuyển đổi tại đây
+  }
+}, []);
