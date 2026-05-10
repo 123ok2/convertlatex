@@ -252,6 +252,32 @@ export default function App() {
   const [showPermissionError, setShowPermissionError] = useState(false);
   const [showCreditAlert, setShowCreditAlert] = useState(false);
 
+
+// Chèn vào sau dòng: const [showCreditAlert, setShowCreditAlert] = useState(false);
+
+useEffect(() => {
+  // 1. Lấy tham số 'content' từ địa chỉ web
+  const urlParams = new URLSearchParams(window.location.search);
+  const sharedContent = urlParams.get('content');
+
+  if (sharedContent) {
+    try {
+      // 2. Giải mã và đưa vào ô soạn thảo
+      const decodedText = decodeURIComponent(sharedContent);
+      setInput(decodedText); // 'setInput' là hàm cập nhật nội dung của bạn
+      
+      // 3. Làm sạch thanh địa chỉ để người dùng không thấy đoạn mã dài
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch (e) {
+      console.error("Lỗi giải mã nội dung từ Gemini:", e);
+    }
+  }
+}, []); // Chạy 1 lần duy nhất khi trang web vừa mở
+
+
+
+
+  
   const [content, setContent] = useState<string>('');
   const [previewContent, setPreviewContent] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
@@ -264,6 +290,11 @@ export default function App() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+
+
+
+
+  
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 4000);
