@@ -253,29 +253,50 @@ export default function App() {
   const [showCreditAlert, setShowCreditAlert] = useState(false);
 
 
-// Chèn vào sau dòng: const [showCreditAlert, setShowCreditAlert] = useState(false);
 
-useEffect(() => {
-  // 1. Lấy tham số 'content' từ địa chỉ web
-  const urlParams = new URLSearchParams(window.location.search);
-  const sharedContent = urlParams.get('content');
+// App.tsx
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+// ... (Các imports giữ nguyên như tệp của bạn)
 
-  if (sharedContent) {
-    try {
-      // 2. Giải mã và đưa vào ô soạn thảo
-      const decodedText = decodeURIComponent(sharedContent);
-      setInput(decodedText); // 'setInput' là hàm cập nhật nội dung của bạn
-      
-      // 3. Làm sạch thanh địa chỉ để người dùng không thấy đoạn mã dài
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } catch (e) {
-      console.error("Lỗi giải mã nội dung từ Gemini:", e);
+function App() {
+  const [input, setInput] = useState(''); // Biến quản lý ô soạn thảo
+  // ... (Các state khác giữ nguyên)
+
+  // --- ĐOẠN CODE SỬA LỖI: NHẬN DỮ LIỆU TỪ GEMINI ---
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const sharedContent = urlParams.get('content');
+
+    if (sharedContent) {
+      try {
+        // Giải mã nội dung từ Extension gửi sang
+        const decodedText = decodeURIComponent(sharedContent);
+        
+        // Đưa trực tiếp vào ô soạn thảo
+        setInput(decodedText); 
+        
+        // Làm sạch URL để không hiện đoạn mã dài
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        // Thông báo cho người dùng (Tùy chọn)
+        console.log("Đã nhận dữ liệu từ Gemini thành công!");
+      } catch (e) {
+        console.error("Lỗi khi nhận dữ liệu:", e);
+      }
     }
-  }
-}, []); // Chạy 1 lần duy nhất khi trang web vừa mở
+  }, []); // Chỉ chạy 1 lần khi trang web tải xong
+  // ------------------------------------------------
 
+  // ... (Toàn bộ phần code xử lý Firebase, AI, Giao diện bên dưới giữ nguyên)
+  
+  return (
+    // ... (Phần render giao diện giữ nguyên)
+    // Đảm bảo textarea của bạn đang dùng: value={input} và onChange={(e) => setInput(e.target.value)}
+  );
+}
 
-
+export default App;
+  
 
   
   const [content, setContent] = useState<string>('');
