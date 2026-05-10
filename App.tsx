@@ -251,53 +251,6 @@ export default function App() {
   const [showConfigError, setShowConfigError] = useState(false);
   const [showPermissionError, setShowPermissionError] = useState(false);
   const [showCreditAlert, setShowCreditAlert] = useState(false);
-
-
-
-// App.tsx
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-// ... (Các imports giữ nguyên như tệp của bạn)
-
-function App() {
-  const [input, setInput] = useState(''); // Biến quản lý ô soạn thảo
-  // ... (Các state khác giữ nguyên)
-
-  // --- ĐOẠN CODE SỬA LỖI: NHẬN DỮ LIỆU TỪ GEMINI ---
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const sharedContent = urlParams.get('content');
-
-    if (sharedContent) {
-      try {
-        // Giải mã nội dung từ Extension gửi sang
-        const decodedText = decodeURIComponent(sharedContent);
-        
-        // Đưa trực tiếp vào ô soạn thảo
-        setInput(decodedText); 
-        
-        // Làm sạch URL để không hiện đoạn mã dài
-        window.history.replaceState({}, document.title, window.location.pathname);
-        
-        // Thông báo cho người dùng (Tùy chọn)
-        console.log("Đã nhận dữ liệu từ Gemini thành công!");
-      } catch (e) {
-        console.error("Lỗi khi nhận dữ liệu:", e);
-      }
-    }
-  }, []); // Chỉ chạy 1 lần khi trang web tải xong
-  // ------------------------------------------------
-
-  // ... (Toàn bộ phần code xử lý Firebase, AI, Giao diện bên dưới giữ nguyên)
-  
-  return (
-    // ... (Phần render giao diện giữ nguyên)
-    // Đảm bảo textarea của bạn đang dùng: value={input} và onChange={(e) => setInput(e.target.value)}
-  );
-}
-
-export default App;
-  
-
   
   const [content, setContent] = useState<string>('');
   const [previewContent, setPreviewContent] = useState<string>('');
