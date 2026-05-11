@@ -3,7 +3,6 @@ import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
-import remarkBreaks from 'remark-breaks';
 import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -19,19 +18,139 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content }) => 
     if (!content) return '';
 
     // --- STEP 1: PRE-NORMALIZE MATH DELIMITERS ---
-    // Gemini often use \[ \] and \( \)
     let text = content
-      .replace(/\\\[([\s\S]*?)\\\]/g, (match, p1) => `\n\n$$ ${p1.trim()} $$\n\n`) 
-      .replace(/\\\(([\s\S]*?)\\\)/g, (match, p1) => `$${p1.trim()}$`);
+      .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$') // Chuyển \[ \] thành $$ $$
+      .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');   // Chuyển \( \) thành $ $
 
-    // --- STEP 2: ENSURE BLOCK MATH HAS EMPTY LINES ---
-    // Remark math needs empty lines around $$ block
-    text = text.replace(/\s*\$\$([\s\S]*?)\$\$\s*/g, (match, p1) => `\n\n$$ ${p1.trim()} $$\n\n`);
-    
-    // --- STEP 3: FIX ADJACENT INLINE MATH ---
-    text = text.replace(/(\$[^$]+\$)\s*(?=\$)/g, '$1 ');
+    // --- STEP 2: FIX ADJACENT MATH & MULTILINE SEPARATOR ---
+    // Tách riêng các công thức nếu chúng ở các dòng khác nhau trong cùng một block $$...$$
+    text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match, inner) => {
+      // Nếu là môi trường có sẵn cấu trúc nhiều dòng (giữ nguyên)
+      if (inner.includes('\\begin{')) return match;
+      
+      const lines = inner.split('\n').filter((l: string) => l.trim().length > 0);
+      if (lines.length > 1) {
+        // Mỗi dòng xuống dòng được coi là 1 công thức hoàn toàn mới và tách riêng
+        return lines.map((l: string) => `\n\n$$ ${l.trim()} $$\n\n`).join('');
+      }
+      return match;
+    });
 
-    return text;
+    text = text.replace(/(^|[^\$])(\$[^\$\n]+\$)(?=\$)/g, '$1$2\n\n');
+
+    // --- STEP 3: SMART CSV TO MARKDOWN TABLE CONVERTER ---
+    const parseCSVLine = (line: string) => {
+      const parts = [];
+      let current = '';
+      let inQuote = false;
+      let braceDepth = 0;
+      let bracketDepth = 0;
+      
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const prevChar = i > 0 ? line[i - 1] : '';
+
+        // Theo dõi độ sâu của ngoặc để tránh ngắt cột trong công thức phức tạp
+        if (char === '{' && prevChar !== '\\') braceDepth++;
+        if (char === '}' && prevChar !== '\\') braceDepth = Math.max(0, braceDepth - 1);
+        if (char === '[' && prevChar !== '\\') bracketDepth++;
+        if (char === ']' && prevChar !== '\\') bracketDepth = Math.max(0, bracketDepth - 1);
+
+        if (char === '"') {
+          inQuote = !inQuote;
+        } else if (char === ',' && !inQuote && braceDepth === 0 && bracketDepth === 0 && prevChar !== '\\') {
+          // Chỉ tách cột nếu không ở trong ngoặc kép, không ở trong ngoặc nhọn/vuông và không phải là \, (LaTeX space)
+          parts.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      parts.push(current.trim());
+      return parts;
+    };
+
+    const lines = text.split('\n');
+    let resultLines: string[] = [];
+    let tableBuffer: { original: string, cols: string[] }[] = [];
+    let bufferColCount = 0;
+
+    const flushTableBuffer = () => {
+      if (tableBuffer.length === 0) return;
+
+      // Điều kiện tạo bảng: ít nhất 2 dòng, >= 2 cột, và không có quá nhiều dấu gạch chéo ngược (dấu hiệu của LaTeX)
+      const looksLikeMath = tableBuffer.some(row => 
+        row.original.includes('\\') || 
+        row.original.includes('$') || 
+        /^[0-9\s\+\-\*\/\=\(\)\^\,]+$/.test(row.original)
+      );
+
+      if (!looksLikeMath && ((tableBuffer.length >= 2 && bufferColCount >= 2) || (tableBuffer.length === 1 && bufferColCount >= 3))) {
+        const headerRow = tableBuffer[0].cols;
+        resultLines.push('| ' + headerRow.join(' | ') + ' |');
+        const separator = headerRow.map(() => ':---');
+        resultLines.push('| ' + separator.join(' | ') + ' |');
+        
+        for (let i = 1; i < tableBuffer.length; i++) {
+            let rowCols = tableBuffer[i].cols;
+            if (rowCols.length < bufferColCount) {
+                rowCols = [...rowCols, ...Array(bufferColCount - rowCols.length).fill('')];
+            } else if (rowCols.length > bufferColCount) {
+                const extras = rowCols.slice(bufferColCount - 1).join(', ');
+                rowCols = [...rowCols.slice(0, bufferColCount - 1), extras];
+            }
+            resultLines.push('| ' + rowCols.join(' | ') + ' |');
+        }
+        resultLines.push(''); 
+      } else {
+        tableBuffer.forEach(row => resultLines.push(row.original));
+      }
+
+      tableBuffer = [];
+      bufferColCount = 0;
+    };
+
+    for (let line of lines) {
+      const trimmedLine = line.trim();
+      
+      // Kiểm tra xem dòng có chứa các ký hiệu toán học đặc trưng không
+      const hasHeavyMath = /\\(int|frac|sum|sqrt|alpha|beta|gamma|delta|phi|omega|inf|theta|dx|dy)/.test(trimmedLine) || 
+                          trimmedLine.startsWith('$') || 
+                          trimmedLine.endsWith('$');
+
+      if (!trimmedLine || trimmedLine.startsWith('|') || hasHeavyMath) {
+        flushTableBuffer();
+        resultLines.push(line);
+        continue;
+      }
+
+      const cols = parseCSVLine(line);
+
+      if (cols.length > 1) {
+        if (tableBuffer.length === 0) {
+          bufferColCount = cols.length;
+          tableBuffer.push({ original: line, cols });
+        } else {
+          if (Math.abs(cols.length - bufferColCount) <= 1) {
+             if (cols.length === bufferColCount + 1 && cols[cols.length-1] === '') {
+                 cols.pop();
+             }
+             tableBuffer.push({ original: line, cols });
+          } else {
+             flushTableBuffer();
+             bufferColCount = cols.length;
+             tableBuffer.push({ original: line, cols });
+          }
+        }
+      } else {
+        flushTableBuffer();
+        resultLines.push(line);
+      }
+    }
+    flushTableBuffer();
+
+    return resultLines.join('\n');
+
   }, [content]);
 
   return (
@@ -51,7 +170,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content }) => 
           prose-pre:bg-slate-50 prose-pre:border prose-pre:border-slate-200 prose-pre:shadow-sm prose-pre:text-slate-800 prose-pre:rounded-lg
         ">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
+        remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
           code({ inline, className, children, ...props }: MarkdownComponentProps) {
