@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "MathType AI Online - Extension",
+  "version": "1.0",
+  "description": "Nhận diện công thức toán học và soạn thảo LaTeX chuyên nghiệp",
+  "permissions": [
+    "activeTab",
+    "clipboardWrite",
+    "storage"
+  ],
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Mở MathType Online",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
+}
