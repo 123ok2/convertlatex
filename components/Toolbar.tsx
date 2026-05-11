@@ -17,7 +17,6 @@ interface ToolbarProps {
   onExportWord: () => void;
   onClear: () => void;
   onOptimize: () => void;
-  onVoiceToggle: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -29,8 +28,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onPrint,
   onExportWord,
   onClear,
-  onOptimize,
-  onVoiceToggle
+  onOptimize
 }) => {
   
   // Fix: Set children to optional to resolve Property 'children' is missing error in strict environments
@@ -80,7 +78,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         {/* Công cụ nhập liệu */}
         <ToolGroup label="Nhập liệu">
           <ToolButton onClick={onOpenDrawing} icon={<Calculator />} title="MathType Online" />
-          <ToolButton onClick={onVoiceToggle} icon={<Mic />} title="Trợ lý Giọng nói (No AI)" />
           <ToolButton onClick={onOptimize} icon={<Sparkles />} title="Tối ưu Toán học (Offline)" />
         </ToolGroup>
       </div>
