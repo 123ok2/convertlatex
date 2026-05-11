@@ -58,42 +58,40 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   );
 
   return (
-    <div className="h-16 md:h-20 glass border-b border-slate-200 flex items-center px-4 md:px-6 justify-between shadow-sm z-30 no-print flex-shrink-0">
+    <div className="h-20 glass border-b border-slate-200 flex items-center px-6 justify-between shadow-sm z-30 no-print flex-shrink-0">
       
-      <div className="flex items-center overflow-x-auto no-scrollbar scroll-smooth flex-1 mr-2">
-        <div className="flex items-center min-w-max">
-          {/* Tác vụ file */}
-          <ToolGroup label="Tệp">
-             <ToolButton onClick={onClear} icon={<Plus />} title="Tạo mới" />
-             <input type="file" ref={fileInputRef} onChange={onFileUpload} className="hidden" accept=".txt,.md" />
-             <ToolButton onClick={() => fileInputRef.current?.click()} icon={<Upload />} title="Mở" />
-          </ToolGroup>
+      <div className="flex items-center">
+        {/* Tác vụ file */}
+        <ToolGroup label="Tệp">
+           <ToolButton onClick={onClear} icon={<Plus />} title="Tạo mới" />
+           <input type="file" ref={fileInputRef} onChange={onFileUpload} className="hidden" accept=".txt,.md" />
+           <ToolButton onClick={() => fileInputRef.current?.click()} icon={<Upload />} title="Mở tệp" />
+        </ToolGroup>
 
-          {/* Định dạng nhanh */}
-          <ToolGroup label="Định dạng">
-            <ToolButton onClick={() => onInsert('**', '**')} icon={<Bold />} title="Đậm" />
-            <ToolButton onClick={() => onInsert('*', '*')} icon={<Italic />} title="Nghiêng" />
-            <ToolButton onClick={() => onInsert('### ')} icon={<Heading />} title="H" />
-            <ToolButton onClick={() => onInsert('- ')} icon={<List />} title="List" />
-            <ToolButton onClick={() => onInsert('$$ ', ' $$')} icon={<Sigma />} title="Toán" />
-          </ToolGroup>
+        {/* Định dạng nhanh */}
+        <ToolGroup label="Định dạng">
+          <ToolButton onClick={() => onInsert('**', '**')} icon={<Bold />} title="In đậm" />
+          <ToolButton onClick={() => onInsert('*', '*')} icon={<Italic />} title="In nghiêng" />
+          <ToolButton onClick={() => onInsert('### ')} icon={<Heading />} title="Tiêu đề" />
+          <ToolButton onClick={() => onInsert('- ')} icon={<List />} title="Danh sách" />
+          <ToolButton onClick={() => onInsert('$$ ', ' $$')} icon={<Sigma />} title="Công thức Toán" />
+        </ToolGroup>
 
-          {/* Công cụ nhập liệu */}
-          <ToolGroup label="Nhập">
-            <ToolButton onClick={onOpenDrawing} icon={<Calculator />} title="MT" />
-            <ToolButton onClick={onVoiceToggle} icon={<Mic />} title="Mic" />
-            <ToolButton onClick={onOptimize} icon={<Sparkles />} title="Auto" />
-          </ToolGroup>
-        </div>
+        {/* Công cụ nhập liệu */}
+        <ToolGroup label="Nhập liệu">
+          <ToolButton onClick={onOpenDrawing} icon={<Calculator />} title="MathType Online" />
+          <ToolButton onClick={onVoiceToggle} icon={<Mic />} title="Trợ lý Giọng nói (No AI)" />
+          <ToolButton onClick={onOptimize} icon={<Sparkles />} title="Tối ưu Toán học (Offline)" />
+        </ToolGroup>
       </div>
 
-      <div className="flex items-center gap-1 md:gap-3 flex-shrink-0">
-        {/* Nhóm Xuất bản - Gọn trên mobile */}
-        <div className="flex items-center gap-0 md:gap-1">
-          <ToolButton onClick={onCopyFormatted} icon={<Copy />} title="Copy" />
-          <ToolButton onClick={onPrint} icon={<Printer />} title="In" className="hidden sm:inline-flex" />
-          <ToolButton onClick={onExportWord} icon={<FileDown />} title="Word" />
-          <ToolButton onClick={onClear} icon={<Trash2 />} title="Xóa" danger />
+      <div className="flex items-center gap-3">
+        {/* Nhóm Xuất bản */}
+        <div className="flex items-center gap-1">
+          <ToolButton onClick={onCopyFormatted} icon={<Copy />} title="Sao chép (-1 Credit)" />
+          <ToolButton onClick={onPrint} icon={<Printer />} title="In PDF (-1 Credit)" />
+          <ToolButton onClick={onExportWord} icon={<FileDown />} title="Tải Word (-1 Credit)" />
+          <ToolButton onClick={onClear} icon={<Trash2 />} title="Xóa tất cả" danger />
         </div>
       </div>
 

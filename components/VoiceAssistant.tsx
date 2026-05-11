@@ -163,25 +163,14 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({ onInsert, onClos
   };
 
   const toggleListening = () => {
-    if (!navigator.onLine) {
-      setFeedback("Cần có kết nối Internet để sử dụng giọng nói");
-      speak("Vui lòng kiểm tra kết nối mạng");
-      return;
-    }
-    
     if (isListening) {
       recognitionRef.current?.stop();
     } else {
       setTranscript('');
       setInterimTranscript('');
       setFeedback(null);
-      try {
-        recognitionRef.current?.start();
-        setIsListening(true);
-      } catch (e) {
-        console.error("Recognition start error", e);
-        setFeedback("Không thể khởi động Mic. Thử tải lại trang.");
-      }
+      recognitionRef.current?.start();
+      setIsListening(true);
     }
   };
 
@@ -190,7 +179,7 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({ onInsert, onClos
       initial={{ opacity: 0, y: 50 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 50 }}
-      className="fixed bottom-24 md:bottom-8 right-4 md:right-8 z-[60] flex flex-col items-end gap-3"
+      className="fixed bottom-8 right-8 z-[60] flex flex-col items-end gap-3"
     >
       <AnimatePresence>
         {(transcript || interimTranscript || feedback) && (
