@@ -1,1 +1,82 @@
+@import "tailwindcss";
+@import "katex/dist/katex.min.css";
 
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --primary: #4f46e5;
+  --surface: #ffffff;
+  --background: #f8fafc;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--background);
+  margin: 0;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #cbd5e1;
+}
+
+/* Glass Effect */
+.glass {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* MathLive Customization */
+math-field {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  font-size: 20px;
+  background: white;
+  display: block;
+}
+
+math-field:focus-within {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+}
+
+/* Selection Color */
+::selection {
+  background-color: rgba(79, 70, 229, 0.1);
+  color: var(--primary);
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+  .prose { max-width: none !important; }
+}

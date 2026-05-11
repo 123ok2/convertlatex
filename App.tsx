@@ -3,7 +3,9 @@ import { MarkdownPreview } from './components/MarkdownPreview';
 import { Button } from './components/Button';
 import { DrawingModal } from './components/DrawingModal';
 import { Toolbar } from './components/Toolbar';
+import { VoiceAssistant } from './components/VoiceAssistant';
 import { GoogleGenAI } from "@google/genai";
+import { AnimatePresence } from 'motion/react';
 import { auth, db } from './firebase';
 import { 
   onAuthStateChanged, 
@@ -251,24 +253,20 @@ export default function App() {
   const [showConfigError, setShowConfigError] = useState(false);
   const [showPermissionError, setShowPermissionError] = useState(false);
   const [showCreditAlert, setShowCreditAlert] = useState(false);
-  
+
   const [content, setContent] = useState<string>('');
   const [previewContent, setPreviewContent] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [isAiProcessing, setIsAiProcessing] = useState<boolean>(false);
   const [isDeducting, setIsDeducting] = useState(false);
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
+  const [isVoiceAssistantOpen, setIsVoiceAssistantOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'info' | 'error'} | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-
-
-
-
-  
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 4000);
@@ -552,30 +550,30 @@ export default function App() {
         </div>
       )}
 
-      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 flex items-center justify-between z-40 no-print flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200">
-            <Bot className="text-white" size={24} />
+      <header className="h-16 md:h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 md:px-8 flex items-center justify-between z-40 no-print flex-shrink-0">
+        <div className="flex items-center gap-2 md:gap-3">
+          <div className="w-9 h-9 md:w-11 md:h-11 bg-indigo-600 rounded-xl md:rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200">
+            <Bot className="text-white" size={20} md:size={24} />
           </div>
-          <div>
-            <h2 className="font-extrabold text-slate-900 leading-tight">Markdown Pro</h2>
+          <div className="hidden sm:block">
+            <h2 className="font-extrabold text-slate-900 leading-tight text-sm md:text-base">Markdown Pro</h2>
             <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${user.isGuest ? 'bg-orange-400' : 'bg-green-500'}`}></span>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              <span className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${user.isGuest ? 'bg-orange-400' : 'bg-green-500'}`}></span>
+              <span className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                 {user.isGuest ? 'Phiên dùng thử' : 'Thành viên Pro'}
               </span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-           <div className="flex items-center gap-3 px-5 py-2.5 bg-yellow-50 text-yellow-700 border border-yellow-100 rounded-2xl shadow-sm">
-             <div className="w-8 h-8 bg-yellow-400 rounded-xl flex items-center justify-center shadow-sm">
-                <Zap className="text-white" size={16} fill="white" />
+        <div className="flex items-center gap-2 md:gap-4">
+           <div className="flex items-center gap-2 md:gap-3 px-3 md:px-5 py-1.5 md:py-2.5 bg-yellow-50 text-yellow-700 border border-yellow-100 rounded-xl md:rounded-2xl shadow-sm">
+             <div className="w-6 h-6 md:w-8 md:h-8 bg-yellow-400 rounded-lg md:rounded-xl flex items-center justify-center shadow-sm">
+                <Zap className="text-white" size={12} md:size={16} fill="white" />
              </div>
              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Số dư</p>
-                <p className="text-lg font-black leading-none">{credits ?? 0} Credits</p>
+                <p className="text-[8px] md:text-[10px] font-bold uppercase tracking-widest opacity-60 hidden xs:block">Số dư</p>
+                <p className="text-sm md:text-lg font-black leading-none">{credits ?? 0} <span className="text-[10px] md:text-xs">C</span></p>
              </div>
            </div>
 
@@ -629,6 +627,7 @@ export default function App() {
       <Toolbar 
         onInsert={insertTextAtCursor} 
         onOpenDrawing={() => setIsDrawingModalOpen(true)} 
+        onVoiceToggle={() => setIsVoiceAssistantOpen(!isVoiceAssistantOpen)}
         onFileUpload={handleFileUpload} 
         fileInputRef={fileInputRef}
         onCopyFormatted={async () => {
@@ -779,8 +778,12 @@ export default function App() {
         onOptimize={handleOfflineEnhance}
       />
 
-      <main className="flex-1 flex overflow-hidden">
-        <div className={`flex flex-col flex-1 border-r border-slate-200 bg-slate-50/50 transition-all ${activeTab === 'preview' ? 'hidden md:flex' : 'flex'}`}>
+      <main className="flex-1 flex flex-wrap overflow-hidden relative overflow-y-auto md:overflow-hidden">
+        {/* Editor Pane - Adaptive Layout */}
+        <div className="flex flex-col flex-1 min-w-[300px] h-1/2 md:h-full border-r border-slate-200 bg-slate-50/50 relative">
+          <div className="absolute top-2 right-4 z-10 opacity-60">
+            <span className="text-[10px] font-bold text-indigo-500 bg-white/60 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-indigo-100 uppercase tracking-widest">Soạn thảo</span>
+          </div>
           <textarea 
             ref={textareaRef} 
             value={content} 
@@ -801,18 +804,34 @@ export default function App() {
                 setToast({ message: "⚡ Tự động tối ưu định dạng từ AI (Offline)", type: 'success' });
               }
             }}
-            className="flex-1 p-8 mono text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800 select-text overflow-y-auto custom-scrollbar" 
-            placeholder="Dán nội dung vào đây..." 
+            className="flex-1 p-4 md:p-8 mono text-sm md:text-base leading-relaxed resize-none outline-none bg-transparent text-slate-800 select-text overflow-y-auto custom-scrollbar" 
+            placeholder="Dán nội dung vào đây hoặc dùng Trợ lý giọng nói..." 
           />
         </div>
-        <div className={`flex flex-col flex-1 bg-white overflow-y-auto custom-scrollbar transition-all ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
-           <div className="flex-1 py-12 px-8 md:px-16 max-w-4xl mx-auto w-full">
-              <MarkdownPreview content={previewContent || content} />
-           </div>
+
+        {/* Preview Pane - Adaptive Layout */}
+        <div className="flex flex-col flex-1 min-w-[300px] h-1/2 md:h-full bg-white overflow-hidden relative">
+          <div className="absolute top-2 right-4 z-10 opacity-60">
+            <span className="text-[10px] font-bold text-emerald-500 bg-white/60 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-emerald-100 uppercase tracking-widest">Xem trước</span>
+          </div>
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-0">
+            <div className="py-6 px-4 md:py-12 md:px-16 max-w-4xl mx-auto w-full">
+               <MarkdownPreview content={previewContent || content} />
+            </div>
+          </div>
         </div>
       </main>
 
       <DrawingModal isOpen={isDrawingModalOpen} onClose={() => setIsDrawingModalOpen(false)} onSubmit={handleDrawingSubmit} isProcessing={isAiProcessing} />
+
+      <AnimatePresence>
+        {isVoiceAssistantOpen && (
+          <VoiceAssistant 
+            onInsert={(text) => insertTextAtCursor(text)} 
+            onClose={() => setIsVoiceAssistantOpen(false)} 
+          />
+        )}
+      </AnimatePresence>
 
       {showPermissionError && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
