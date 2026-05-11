@@ -145,23 +145,7 @@ const formatAiPastedContent = (text: string): string => {
        .replace(/α/g, '\\alpha ')
        .replace(/β/g, '\\beta ')
        .replace(/γ/g, '\\gamma ')
-       .replace(/δ/g, '\\delta ')
-       .replace(/ε/g, '\\epsilon ')
-       .replace(/ζ/g, '\\zeta ')
-       .replace(/η/g, '\\eta ')
        .replace(/θ/g, '\\theta ')
-       .replace(/λ/g, '\\lambda ')
-       .replace(/μ/g, '\\mu ')
-       .replace(/ν/g, '\\nu ')
-       .replace(/ξ/g, '\\xi ')
-       .replace(/ρ/g, '\\rho ')
-       .replace(/σ/g, '\\sigma ')
-       .replace(/τ/g, '\\tau ')
-       .replace(/υ/g, '\\upsilon ')
-       .replace(/φ/g, '\\phi ')
-       .replace(/χ/g, '\\chi ')
-       .replace(/ψ/g, '\\psi ')
-       .replace(/ω/g, '\\omega ')
        .replace(/Δ/g, '\\Delta ')
        .replace(/Ω/g, '\\Omega ')
        .replace(/±/g, '\\pm ')
@@ -174,23 +158,10 @@ const formatAiPastedContent = (text: string): string => {
        .replace(/′/g, "'")
        .replace(/→/g, '\\rightarrow ')
        .replace(/⇔/g, '\\Leftrightarrow ')
-       .replace(/ ⇒/g, '\\Rightarrow ')
-       .replace(/∈/g, '\\in ')
-       .replace(/∉/g, '\\notin ')
-       .replace(/⊂/g, '\\subset ')
-       .replace(/⊃/g, '\\supset ')
-       .replace(/⊆/g, '\\subseteq ')
-       .replace(/⊇/g, '\\supseteq ')
-       .replace(/∪/g, '\\cup ')
-       .replace(/∩/g, '\\cap ')
-       .replace(/∀/g, '\\forall ')
-       .replace(/∃/g, '\\exists ')
-       .replace(/¬/g, '\\neg ')
-       .replace(/∧/g, '\\land ')
-       .replace(/∨/g, '\\lor ');
+       .replace(/⇒/g, '\\Rightarrow ');
 
-  // 2.5 Escape các ký tự % thô CHỈ KHI nó có vẻ ở trong hoặc ngay cạnh số (tránh phá hỏng URL encode)
-  p = p.replace(/(\d)%/g, '$1\\%');
+  // 2.5 Escape các ký tự % thô để LaTeX hiểu (tránh biến thành comment trong math block)
+  p = p.replace(/([^\\]|^)%/g, '$1\\%');
 
   // 3. Xử lý vi phân (dx, dy, dt) khi nó đứng độc lập
   p = p.replace(/(^|\s)(\d*[a-zA-Z]?)dx(\s|$)/g, '$1$2 \\,dx$3')
@@ -202,10 +173,12 @@ const formatAiPastedContent = (text: string): string => {
        .replace(/√([a-zA-Z0-9]+)/g, '\\sqrt{$1}');
        
   // 5. Xử lý các biến có chỉ số dưới viết liền (mdd -> m_{dd}, mct -> m_{ct})
-  p = p.replace(/\b(m|n|V|C)(dd|ct|H2|O2|CO2|H2O|HCl|NaOH|H2SO4|(\d+))\b/g, '$1_{$2}');
+  // Thường thấy trong hóa học: mct, mdd, nH2, Vdd, CM, C%
+  p = p.replace(/\b(m|n|V|C)(dd|ct|H2|O2|CO2|H2O|HCl|NaOH|H2SO4)\b/g, '$1_{$2}');
   
   // Đặc trị pattern C% = mct/mdd * 100% khi bị mất dấu phân số hoặc dính chữ
-  p = p.replace(/C\\%\s?=\s?(mct|m_{ct}|m_ct)\s?(mdd|m_{dd}|m_dd)\s?(\\times|\*|×)\s?100\\\%/g, "C\\% = \\frac{m_{ct}}{m_{dd}} \\times 100\\%");
+  p = p.replace(/C\\%\s?=\s?(mct|m_{ct})\s?(mdd|m_{dd})\s?(\\times|\*|×)\s?100\\\%/g, "C\\% = \\frac{m_{ct}}{m_{dd}} \\times 100\\%");
+  p = p.replace(/C\\%\s?=\s?(mdd|m_{dd})\s?(mct|m_{ct})\s?(\\times|\*|×)\s?100\\\%/g, "C\\% = \\frac{m_{ct}}{m_{dd}} \\times 100\\%"); // Đôi khi bị đảo
   
   // Xử lý n và V cho các chất khí/lỏng phổ biến
   p = p.replace(/\b(n|V|m)([A-Z][a-z]?\d?)\b/g, '$1_{$2}');
@@ -213,7 +186,8 @@ const formatAiPastedContent = (text: string): string => {
   // 6. Xử lý phân số dạng a/b thành \frac{a}{b} nếu nằm trong dòng có vẻ là toán
   const handleFractions = (line: string) => {
     if (!line.includes('/') || line.includes('http')) return line;
-    return line.replace(/(\b[a-zA-Z0-9_{}\(\)\%]{1,10})\s?\/\s?([a-zA-Z0-9_{}\(\)\%]{1,10}\b)/g, "\\frac{$1}{$2}");
+    // Tìm x/y trong đó x, y là cụm ký tự toán học
+    return line.replace(/([a-zA-Z0-9_{}\(\)\%]+)\s?\/\s?([a-zA-Z0-9_{}\(\)\%]+)/g, "\\frac{$1}{$2}");
   };
 
   // 7. Tự động bọc $$ cho các dòng toán học nếu AI quên
@@ -240,15 +214,20 @@ const formatAiPastedContent = (text: string): string => {
     // Nếu dòng trống hoặc đã có ký hiệu latex block inline
     if (!trimmed || currentLine.includes('$')) return currentLine;
     
-    const mathMatch = currentLine.match(/\\int|\\sqrt|\\frac|\\sin|\\cos|\\tan|\\lim|\\sum|\\Delta|\\alpha|\\beta|\\gamma|\\theta|\^|_|\\times|\\div|\\le|\\ge|\\neq|\\pm|\\rightarrow|\\infty/g);
+    // Nhận diện dòng chứa biểu thức toán
+    const mathMatch = currentLine.match(/\\int|\\sqrt|\\frac|\\sin|\\cos|\\tan|\\lim|\\sum|\\Delta|\\alpha|\\beta|\\gamma|\\theta|\^|_|\\times|\\div|\\leq|\\geq|\\neq/g);
+    
+    // Đếm số lượng từ thông thường để xét xem đây là câu văn hay phương trình
     const normalWordsMatch = trimmed.match(/[a-zA-Z]{4,}/g);
     const normalWordsCount = normalWordsMatch ? normalWordsMatch.length : 0;
     
+    // Nếu có ít nhất 1 ký hiệu toán và ít từ bình thường, hoặc có dấu = và ký hiệu toán
     if ((mathMatch && mathMatch.length >= 1 && normalWordsCount <= 3) || 
-        (currentLine.includes('=') && mathMatch && mathMatch.length >= 1)) {
+        (currentLine.includes('=') && mathMatch)) {
       return `$$ ${currentLine.trim()} $$`;
     }
     
+    // Nếu chỉ là một phương trình đơn giản như x^2 + y^2 = 1 hoặc C% = ...
     if (/^[a-zA-Z0-9\+\-\=\^\_\(\)\s\%\/\\\{\}]+$/.test(trimmed) && trimmed.includes('=') && 
        (trimmed.includes('^') || trimmed.includes('_') || trimmed.includes('/') || trimmed.includes('\\'))) {
       return `$$ ${currentLine.trim()} $$`;
@@ -430,10 +409,9 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      const formatted = formatAiPastedContent(text);
-      setContent(formatted);
-      setPreviewContent(formatted);
-      setToast({ message: "Đã tải và tối ưu nội dung tệp tin", type: 'success' });
+      setContent(text);
+      setPreviewContent(text);
+      setToast({ message: "Đã tải nội dung tệp tin", type: 'success' });
     };
     reader.readAsText(file);
   };
@@ -828,7 +806,7 @@ export default function App() {
           />
         </div>
         <div className={`flex flex-col flex-1 bg-white overflow-y-auto custom-scrollbar transition-all ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
-           <div className="py-12 px-8 md:px-16 max-w-4xl mx-auto w-full">
+           <div className="flex-1 py-12 px-8 md:px-16 max-w-4xl mx-auto w-full">
               <MarkdownPreview content={previewContent || content} />
            </div>
         </div>
