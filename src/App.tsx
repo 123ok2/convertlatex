@@ -510,6 +510,12 @@ export default function App() {
 
     // 2. Chạy đếm thực tế (recount) trực tiếp từ các collection để cập nhật số liệu chính xác tuyệt đối
     try {
+      // 2. Chỉ chạy đếm thực tế (recount) trực tiếp nếu là Admin để tiết kiệm tài nguyên và bảo mật tuyệt đối, tránh bị ghi đè dữ liệu
+      const isAdminUser = auth.currentUser && (auth.currentUser.email === "duyconghanh2017@gmail.com" || auth.currentUser.email === "rongtiendatto@gmail.com");
+      if (!isAdminUser) {
+        return; // Người dùng thường chỉ đọc dữ liệu tổng hợp ở bước 1, không tự đếm tránh bị rules chặn
+      }
+
       const usersColEng = collection(db, 'users');
       const usersColVie = collection(db, 'người dùng');
       const guestsColEng = collection(db, 'guests');
@@ -527,8 +533,8 @@ export default function App() {
         getCountFromServer(guestsColVie).catch(() => null)
       ]);
 
-      // Nếu truy vấn đếm trực tiếp thành công (tránh bị rules chặn)
-      if (usersSnapEng !== null || usersSnapVie !== null || guestsSnapEng !== null || guestsSnapVie !== null) {
+      // Chỉ cập nhật đồng bộ nếu TẤT CẢ các truy vấn đếm trực tiếp thành công (tránh ghi đè khi bị ném lỗi null)
+      if (usersSnapEng !== null && usersSnapVie !== null && guestsSnapEng !== null && guestsSnapVie !== null) {
         const countUsersEng = usersSnapEng ? usersSnapEng.data().count : 0;
         const countUsersVie = usersSnapVie ? usersSnapVie.data().count : 0;
         const countGuestsEng = guestsSnapEng ? guestsSnapEng.data().count : 0;
@@ -1386,11 +1392,9 @@ export default function App() {
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- CÁC HÀM TIỆN ÍCH (HELPER FUNCTIONS) ---
-    
     // Kiểm tra quyền Admin
     function isAdmin() {
-      return request.auth != null && request.auth.token.email == "duyconghanh2017@gmail.com";
+      return request.auth != null && (request.auth.token.email == "duyconghanh2017@gmail.com" || request.auth.token.email == "rongtiendatto@gmail.com");
     }
 
     // Kiểm tra người dùng đã đăng nhập
@@ -1436,7 +1440,7 @@ service cloud.firestore {
 service cloud.firestore {
   match /databases/{database}/documents {
     function isAdmin() {
-      return request.auth != null && request.auth.token.email == "duyconghanh2017@gmail.com";
+      return request.auth != null && (request.auth.token.email == "duyconghanh2017@gmail.com" || request.auth.token.email == "rongtiendatto@gmail.com");
     }
     function isSignedIn() {
       return request.auth != null;

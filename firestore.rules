@@ -3,11 +3,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- CÁC HÀM TIỆN ÍCH (HELPER FUNCTIONS) ---
-    
     // Kiểm tra quyền Admin
     function isAdmin() {
-      return request.auth != null && request.auth.token.email == "duyconghanh2017@gmail.com";
+      return request.auth != null && (request.auth.token.email == "duyconghanh2017@gmail.com" || request.auth.token.email == "rongtiendatto@gmail.com");
     }
 
     // Kiểm tra người dùng đã đăng nhập
