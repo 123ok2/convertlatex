@@ -1,101 +1,13 @@
-
-<!DOCTYPE html>
-<html lang="vi">
+<!doctype html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LLM Markdown Pro - Chuyển đổi tài liệu</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-    <script defer src="https://unpkg.com/mathlive"></script>
-    <style>
-      :root {
-        --primary: #4f46e5;
-        --surface: #ffffff;
-        --background: #f8fafc;
-      }
-      body {
-        font-family: 'Plus Jakarta Sans', sans-serif;
-        background-color: var(--background);
-      }
-      .mono {
-        font-family: 'JetBrains Mono', monospace;
-      }
-      /* Custom Scrollbar */
-      ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #e2e8f0;
-        border-radius: 10px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #cbd5e1;
-      }
-      /* Smooth Transitions */
-      .transition-all {
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      }
-      /* Glass Effect */
-      .glass {
-        background: rgba(255, 255, 255, 0.8);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-      }
-      /* MathLive Customization */
-      math-field {
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 16px;
-        font-size: 20px;
-        background: white;
-      }
-      math-field:focus-within {
-        outline: none;
-        border-color: var(--primary);
-        box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
-      }
-      /* Selection Color */
-      ::selection {
-        background-color: rgba(79, 70, 229, 0.1);
-        color: var(--primary);
-      }
-      @media print {
-        .no-print { display: none !important; }
-        body { background: white; }
-        .prose { max-width: none !important; }
-      }
-    </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.1/",
-    "react": "https://aistudiocdn.com/react@^19.2.1",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
-    "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0",
-    "remark-gfm": "https://aistudiocdn.com/remark-gfm@^4.0.1",
-    "remark-math": "https://aistudiocdn.com/remark-math@^6.0.0",
-    "rehype-katex": "https://aistudiocdn.com/rehype-katex@^7.0.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "react-syntax-highlighter/": "https://aistudiocdn.com/react-syntax-highlighter@^16.1.0/",
-    "react-syntax-highlighter": "https://aistudiocdn.com/react-syntax-highlighter@^16.1.0",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.32.0",
-    "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
-    "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
-    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
-    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
-</head>
-  <body class="antialiased h-screen overflow-hidden text-slate-900">
-    <div id="root" class="h-full"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <title>My Google AI Studio App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
+

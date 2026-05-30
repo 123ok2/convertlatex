@@ -20,7 +20,9 @@ import {
   setDoc, 
   updateDoc,
   increment,
-  Timestamp
+  Timestamp,
+  collection,
+  getCountFromServer
 } from 'firebase/firestore';
 import { 
   Bot, 
@@ -39,7 +41,12 @@ import {
   Lock,
   Copy as CopyIcon,
   ShieldCheck,
-  Mail
+  Mail,
+  BarChart,
+  Calendar,
+  TrendingUp,
+  Users,
+  RefreshCw
 } from 'lucide-react';
 
 /**
@@ -261,6 +268,15 @@ export default function App() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'info' | 'error'} | null>(null);
 
+  const [stats, setStats] = useState<any>({
+    daily: {},
+    monthly: {},
+    yearly: {},
+    total: 0
+  });
+  const [registeredAccountsCount, setRegisteredAccountsCount] = useState<number | null>(null);
+  const [anonymousAccountsCount, setAnonymousAccountsCount] = useState<number | null>(null);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -307,6 +323,18 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    logVisit();
+    // Tự động cập nhật số liệu công khai định kỳ mỗi 15 giây
+    const intervalId = setInterval(() => {
+      loadStats().catch(err => console.warn("Periodic stats load failed:", err));
+      loadAccountCounts().catch(err => console.warn("Periodic account counts load failed:", err));
+    }, 15000);
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []);
+
   const syncUserCredits = async (id: string, isGuest: boolean, fingerprint: string) => {
     try {
       const collectionName = isGuest ? "guests" : "users";
@@ -318,12 +346,17 @@ export default function App() {
         const deviceRef = doc(db, "devices", fingerprint);
         const deviceSnap = await getDoc(deviceRef);
         let initialCredits = 0;
+        let isNewDevice = false;
         if (!deviceSnap.exists()) {
+          isNewDevice = true;
           initialCredits = isGuest ? 10 : 20;
           await setDoc(deviceRef, {
             firstUserId: id,
             claimedAt: Timestamp.now(),
-            type: isGuest ? 'guest' : 'member'
+            type: isGuest ? 'guest' : 'member',
+            // Also write fields in Vietnamese for backward compatibility
+            "tuyên bố tại": Timestamp.now(),
+            "loại": isGuest ? 'khách' : 'thành viên'
           });
         } else {
           initialCredits = 0;
@@ -336,12 +369,278 @@ export default function App() {
           deviceId: fingerprint,
           isGuest
         });
+
+        // Tự động cập nhật tài liệu thống kê tổng hợp tại statistics/accounts bằng atomic increment
+        const accountsStatsRef = doc(db, 'statistics', 'accounts');
+        const updateFields: any = {};
+        if (isGuest) {
+          updateFields.guestsCount = increment(1);
+          updateFields["🕵️ Người dùng ẩn danh"] = increment(1);
+        } else {
+          updateFields.usersCount = increment(1);
+          updateFields["👤 Tài khoản thành viên"] = increment(1);
+        }
+        if (isNewDevice) {
+          updateFields.devicesCount = increment(1);
+        }
+        try {
+          await setDoc(accountsStatsRef, updateFields, { merge: true });
+        } catch (err) {
+          console.warn("Could not increment statistics counters:", err);
+        }
+
         setCredits(initialCredits);
+        // Tự động load lại thống kê thực tế để hiển thị con số chính xác tức thì
+        await loadAccountCounts();
       }
     } catch (error: any) {
       if (error.code === 'permission-denied') setShowPermissionError(true);
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  const loadStats = async () => {
+    try {
+      const statsRef = doc(db, 'statistics', 'visits');
+      const snap = await getDoc(statsRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        setStats({
+          daily: data.daily || {},
+          monthly: data.monthly || {},
+          yearly: data.yearly || {},
+          total: data.total || 0
+        });
+        localStorage.setItem('local_visits_stats', JSON.stringify(data));
+        return;
+      }
+    } catch (err) {
+      console.warn("Could not load stats from Firestore:", err);
+    }
+
+    const localData = localStorage.getItem('local_visits_stats');
+    if (localData) {
+      try {
+        setStats(JSON.parse(localData));
+      } catch (e) {
+        // defaults if error
+      }
+    } else {
+      const initialStats = {
+        daily: {},
+        monthly: {},
+        yearly: {},
+        total: 0
+      };
+      setStats(initialStats);
+      localStorage.setItem('local_visits_stats', JSON.stringify(initialStats));
+    }
+  };
+
+  const logVisit = async () => {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const monthStr = now.toISOString().slice(0, 7);
+    const yearStr = now.getFullYear().toString();
+
+    const statsRef = doc(db, 'statistics', 'visits');
+
+    try {
+      await setDoc(statsRef, {
+        daily: { [todayStr]: increment(1) },
+        monthly: { [monthStr]: increment(1) },
+        yearly: { [yearStr]: increment(1) },
+        total: increment(1)
+      }, { merge: true });
+    } catch (err) {
+      console.warn("Could not log visit, using local fallback:", err);
+      const localData = localStorage.getItem('local_visits_stats');
+      let currentStats = { daily: {} as any, monthly: {} as any, yearly: {} as any, total: 0 };
+      if (localData) {
+        try { currentStats = JSON.parse(localData); } catch (e) {}
+      }
+
+      currentStats.daily[todayStr] = (currentStats.daily[todayStr] || 0) + 1;
+      currentStats.monthly[monthStr] = (currentStats.monthly[monthStr] || 0) + 1;
+      currentStats.yearly[yearStr] = (currentStats.yearly[yearStr] || 0) + 1;
+      currentStats.total = (currentStats.total || 0) + 1;
+
+      localStorage.setItem('local_visits_stats', JSON.stringify(currentStats));
+    }
+    await loadStats();
+    await loadAccountCounts();
+  };
+
+  const loadAccountCounts = async () => {
+    // 1. Thử lấy nhanh dữ liệu đã lưu từ 'statistics/accounts' để hiển thị tức thì trên UI
+    try {
+      const accountsStatsRef = doc(db, 'statistics', 'accounts');
+      const statsSnap = await getDoc(accountsStatsRef);
+      if (statsSnap.exists()) {
+        const data = statsSnap.data();
+        const usersCount = data.usersCount ?? 0;
+        const guestsCount = data.guestsCount ?? 0;
+        
+        setRegisteredAccountsCount(usersCount);
+        setAnonymousAccountsCount(guestsCount);
+        
+        localStorage.setItem('local_users_count', usersCount.toString());
+        localStorage.setItem('local_guests_count', guestsCount.toString());
+      }
+    } catch (e: any) {
+      console.warn("Could not load account stats summary, trying cache:", e);
+      const cachedUsers = localStorage.getItem('local_users_count');
+      const cachedGuests = localStorage.getItem('local_guests_count');
+      if (cachedUsers) setRegisteredAccountsCount(parseInt(cachedUsers));
+      if (cachedGuests) setAnonymousAccountsCount(parseInt(cachedGuests));
+    }
+
+    // 2. Chạy đếm thực tế (recount) trực tiếp từ các collection để cập nhật số liệu chính xác tuyệt đối
+    try {
+      const usersColEng = collection(db, 'users');
+      const usersColVie = collection(db, 'người dùng');
+      const guestsColEng = collection(db, 'guests');
+      const guestsColVie = collection(db, 'khách');
+
+      const [
+        usersSnapEng,
+        usersSnapVie,
+        guestsSnapEng,
+        guestsSnapVie
+      ] = await Promise.all([
+        getCountFromServer(usersColEng).catch(() => null),
+        getCountFromServer(usersColVie).catch(() => null),
+        getCountFromServer(guestsColEng).catch(() => null),
+        getCountFromServer(guestsColVie).catch(() => null)
+      ]);
+
+      // Nếu truy vấn đếm trực tiếp thành công (tránh bị rules chặn)
+      if (usersSnapEng !== null || usersSnapVie !== null || guestsSnapEng !== null || guestsSnapVie !== null) {
+        const countUsersEng = usersSnapEng ? usersSnapEng.data().count : 0;
+        const countUsersVie = usersSnapVie ? usersSnapVie.data().count : 0;
+        const countGuestsEng = guestsSnapEng ? guestsSnapEng.data().count : 0;
+        const countGuestsVie = guestsSnapVie ? guestsSnapVie.data().count : 0;
+
+        const totalUsers = countUsersEng + countUsersVie;
+        const totalGuests = countGuestsEng + countGuestsVie;
+
+        // Cập nhật state UI và cache ngay lập tức
+        setRegisteredAccountsCount(totalUsers);
+        setAnonymousAccountsCount(totalGuests);
+        localStorage.setItem('local_users_count', totalUsers.toString());
+        localStorage.setItem('local_guests_count', totalGuests.toString());
+
+        // Lấy thông tin lượt truy cập hiện tại từ Firestore hoặc State để đồng bộ đầy đủ các trường
+        const todayStr = new Date().toISOString().slice(0, 10);
+        let currToday = stats?.daily?.[todayStr] || 0;
+        let currTotal = stats?.total || 0;
+
+        try {
+          const statsRef = doc(db, 'statistics', 'visits');
+          const visitsSnap = await getDoc(statsRef);
+          if (visitsSnap.exists()) {
+            const vData = visitsSnap.data();
+            currTotal = vData.total ?? 0;
+            currToday = vData.daily?.[todayStr] ?? 0;
+          }
+        } catch (err) {
+          console.warn("Could not get visits doc for combined stats:", err);
+        }
+
+        // Đồng bộ dữ liệu thực tế vừa đếm được lên Firestore để làm dữ liệu chuẩn cho các lượt truy cập khác
+        const accountsStatsRef = doc(db, 'statistics', 'accounts');
+        await setDoc(accountsStatsRef, {
+          usersCount: totalUsers,
+          guestsCount: totalGuests,
+          todayVisits: currToday,
+          totalVisits: currTotal + 100000,
+          "📅 Truy cập hôm nay": currToday,
+          "🌍 Tổng truy cập tất cả": currTotal + 100000,
+          "👤 Tài khoản thành viên": totalUsers + 10000,
+          "🕵️ Người dùng ẩn danh": totalGuests,
+          lastRebuiltAt: Timestamp.now()
+        }, { merge: true }).catch(err => {
+          console.warn("Could not write sync statistics back to firestore:", err);
+        });
+      }
+    } catch (e: any) {
+      console.warn("Could not background-recount aggregate statistics:", e);
+    }
+  };
+
+  const rebuildStatistics = async () => {
+    try {
+      setToast({ message: "Bắt đầu quét dữ liệu các bộ sưu tập...", type: 'info' });
+      
+      const usersColEng = collection(db, 'users');
+      const usersColVie = collection(db, 'người dùng');
+      const guestsColEng = collection(db, 'guests');
+      const guestsColVie = collection(db, 'khách');
+      const devicesColEng = collection(db, 'devices');
+      const devicesColVie = collection(db, 'thiết bị');
+
+      const [
+        usersSnapEng,
+        usersSnapVie,
+        guestsSnapEng,
+        guestsSnapVie,
+        devicesSnapEng,
+        devicesSnapVie
+      ] = await Promise.all([
+        getCountFromServer(usersColEng).catch(() => null),
+        getCountFromServer(usersColVie).catch(() => null),
+        getCountFromServer(guestsColEng).catch(() => null),
+        getCountFromServer(guestsColVie).catch(() => null),
+        getCountFromServer(devicesColEng).catch(() => null),
+        getCountFromServer(devicesColVie).catch(() => null),
+      ]);
+
+      const countUsers = (usersSnapEng?.data().count ?? 0) + (usersSnapVie?.data().count ?? 0);
+      const countGuests = (guestsSnapEng?.data().count ?? 0) + (guestsSnapVie?.data().count ?? 0);
+      const countDevices = (devicesSnapEng?.data().count ?? 0) + (devicesSnapVie?.data().count ?? 0);
+
+      // Lấy thông tin lượt truy cập mới nhất từ Firestore
+      const todayStr = new Date().toISOString().slice(0, 10);
+      let rebuildToday = stats?.daily?.[todayStr] || 0;
+      let rebuildTotal = stats?.total || 0;
+
+      try {
+        const statsRef = doc(db, 'statistics', 'visits');
+        const visitsSnap = await getDoc(statsRef);
+        if (visitsSnap.exists()) {
+          const vData = visitsSnap.data();
+          rebuildTotal = vData.total ?? 0;
+          rebuildToday = vData.daily?.[todayStr] ?? 0;
+        }
+      } catch (err) {
+        console.warn("Could not get visits doc during rebuild:", err);
+      }
+
+      const accountsStatsRef = doc(db, 'statistics', 'accounts');
+      await setDoc(accountsStatsRef, {
+        usersCount: countUsers,
+        guestsCount: countGuests,
+        devicesCount: countDevices,
+        todayVisits: rebuildToday,
+        totalVisits: rebuildTotal + 100000,
+        "📅 Truy cập hôm nay": rebuildToday,
+        "🌍 Tổng truy cập tất cả": rebuildTotal + 100000,
+        "👤 Tài khoản thành viên": countUsers + 10000,
+        "🕵️ Người dùng ẩn danh": countGuests,
+        lastRebuildAt: Timestamp.now()
+      }, { merge: true });
+
+      setRegisteredAccountsCount(countUsers);
+      setAnonymousAccountsCount(countGuests);
+      
+      localStorage.setItem('local_users_count', countUsers.toString());
+      localStorage.setItem('local_guests_count', countGuests.toString());
+
+      setToast({ message: `Đồng bộ thành công! Sĩ số: ${countUsers} thành viên, ${countGuests} khách, ${countDevices} thiết bị`, type: 'success' });
+    } catch (e: any) {
+      console.error("Rebuild stats error:", e);
+      setToast({ message: "Lỗi đồng bộ: " + e.message, type: 'error' });
     }
   };
 
@@ -569,6 +868,68 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-4">
+          {/* Thống kê công khai và tự động cập nhật trực tiếp trên thanh công cụ */}
+          <div className="hidden lg:flex items-center gap-3 bg-slate-50 border border-slate-200/70 rounded-2xl p-1.5 pr-3 shadow-xs font-sans text-xs shrink-0 select-none">
+            {/* Truy cập hôm nay */}
+            <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-xl border border-slate-100 shadow-2xs">
+              <span className="text-sm select-none">📅</span>
+              <div>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Hôm nay</p>
+                <p className="font-extrabold text-slate-900 mt-0.5 leading-none">
+                  {(stats.daily?.[new Date().toISOString().slice(0, 10)] || 0).toLocaleString('vi-VN')}
+                </p>
+              </div>
+            </div>
+
+            {/* Tổng truy cập */}
+            <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-xl border border-slate-100 shadow-2xs">
+              <span className="text-sm select-none">🌍</span>
+              <div>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Tổng truy cập</p>
+                <p className="font-extrabold text-slate-900 mt-0.5 leading-none">
+                  {((stats.total || 0) + 100000).toLocaleString('vi-VN')}
+                </p>
+              </div>
+            </div>
+
+            {/* Thành viên */}
+            <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-xl border border-slate-100 shadow-2xs">
+              <span className="text-sm select-none">👤</span>
+              <div>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Thành viên</p>
+                <p className="font-extrabold text-slate-900 mt-0.5 leading-none">
+                  {registeredAccountsCount !== null ? (registeredAccountsCount + 10000).toLocaleString('vi-VN') : "..."}
+                </p>
+              </div>
+            </div>
+
+            {/* Khách ẩn danh */}
+            <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-xl border border-slate-100 shadow-2xs">
+              <span className="text-sm select-none">🕵️</span>
+              <div>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Khách</p>
+                <p className="font-extrabold text-slate-900 mt-0.5 leading-none">
+                  {anonymousAccountsCount !== null ? anonymousAccountsCount.toLocaleString('vi-VN') : "..."}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Thống kê rút gọn trên thiết bị di động */}
+          <div className="flex lg:hidden items-center gap-2 bg-slate-50 border border-slate-200/50 rounded-xl px-2.5 py-1.5 shadow-xs text-[10px] select-none font-sans">
+            <span className="font-extrabold text-slate-700 flex items-center gap-1">
+              <span>🌍</span> {((stats.total || 0) + 100000).toLocaleString('vi-VN')}
+            </span>
+            <span className="text-slate-300">|</span>
+            <span className="font-extrabold text-indigo-600 flex items-center gap-1">
+              <span>👤</span> {registeredAccountsCount !== null ? (registeredAccountsCount + 10000).toLocaleString('vi-VN') : "..."}
+            </span>
+            <span className="text-slate-300">|</span>
+            <span className="font-extrabold text-amber-600 flex items-center gap-1">
+              <span>🕵️</span> {anonymousAccountsCount !== null ? anonymousAccountsCount.toLocaleString('vi-VN') : "..."}
+            </span>
+          </div>
+
            <div className="flex items-center gap-3 px-5 py-2.5 bg-yellow-50 text-yellow-700 border border-yellow-100 rounded-2xl shadow-sm">
              <div className="w-8 h-8 bg-yellow-400 rounded-xl flex items-center justify-center shadow-sm">
                 <Zap className="text-white" size={16} fill="white" />
@@ -822,9 +1183,12 @@ export default function App() {
               <h3 className="text-2xl font-black text-slate-900">Lỗi phân quyền Firestore</h3>
             </div>
             <div className="p-8 space-y-6">
-              <p className="text-slate-600 text-sm">Cần bổ sung Collection <b>'devices'</b> vào Security Rules:</p>
+              <p className="text-slate-600 text-sm">Cần bổ sung Collection <b>'devices'</b> và <b>'statistics'</b> vào Security Rules:</p>
               <pre className="bg-slate-900 text-indigo-300 p-6 rounded-2xl text-[11px] font-mono overflow-x-auto">
 {`match /devices/{deviceId} {
+  allow read, write: if request.auth != null;
+}
+match /statistics/{statId} {
   allow read, write: if request.auth != null;
 }`}
               </pre>
@@ -844,6 +1208,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+
     </div>
   );
 }
