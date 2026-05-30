@@ -270,6 +270,7 @@ export default function App() {
   const [content, setContent] = useState<string>('');
   const [previewContent, setPreviewContent] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
+  const [previewMode, setPreviewMode] = useState<'web' | 'word'>('web');
   const [isAiProcessing, setIsAiProcessing] = useState<boolean>(false);
   const [isDeducting, setIsDeducting] = useState(false);
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
@@ -1317,8 +1318,45 @@ export default function App() {
           />
         </div>
         <div className={`flex flex-col flex-1 bg-white overflow-y-auto custom-scrollbar transition-all ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
-           <div className="flex-1 py-12 px-8 md:px-16 max-w-4xl mx-auto w-full">
-              <MarkdownPreview content={previewContent || content} />
+           <div className="flex-1 py-4 md:py-6 px-4 md:px-8 max-w-4xl mx-auto w-full">
+              {/* Tùy chỉnh chế độ xem trước */}
+              <div className="flex justify-between items-center pb-3 border-b border-slate-100 mb-4 select-none no-print">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${previewMode === 'word' ? 'bg-indigo-400' : 'bg-emerald-400'}`}></span>
+                      <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${previewMode === 'word' ? 'bg-indigo-500' : 'bg-emerald-500'}`}></span>
+                    </span>
+                    Xem trước: {previewMode === 'word' ? 'Chuẩn Word' : 'Chuẩn Web'}
+                  </span>
+                </div>
+                <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('web')}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1 ${
+                      previewMode === 'web' 
+                        ? 'bg-white text-slate-800 shadow-sm' 
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    🎨 Bản Web
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('word')}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1 ${
+                      previewMode === 'word' 
+                        ? 'bg-white text-indigo-700 shadow-sm font-black' 
+                        : 'text-slate-500 hover:text-indigo-600'
+                    }`}
+                  >
+                    📝 Bản Word
+                  </button>
+                </div>
+              </div>
+
+              <MarkdownPreview content={previewContent || content} previewMode={previewMode} />
            </div>
         </div>
       </main>
@@ -1339,7 +1377,7 @@ export default function App() {
               
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Toàn bộ Security Rules mới (Đã sửa lỗi vân tay thiết bị & tiếng Việt):</span>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Toàn bộ Security Rules mới (Đã sửa đổi công khai phần statistics):</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -1361,29 +1399,32 @@ service cloud.firestore {
     }
 
     // --- CẤU HÌNH QUYỀN TRUY CẬP ---
-    // Sử dụng wildcard động cho tất cả bộ sưu tập để hỗ trợ tên tiếng Việt có dấu trong Firestore Security Rules
+
+    // 1. Bộ sưu tập 'statistics' hoàn toàn công khai cho tất cả mọi người (đọc/ghi tự do không cần đăng nhập)
+    match /statistics/{document=**} {
+      allow read, write: if true;
+    }
+
+    // 2. Sử dụng wildcard động cho tất cả bộ sưu tập còn lại để hỗ trợ tên tiếng Việt có dấu trong Firestore Security Rules
     match /{collectionName}/{docId} {
       
-      // 1. Bộ sưu tập 'users' & 'người dùng'
+      // Bộ sưu tập 'users' & 'người dùng': Cho phép chủ sở hữu (uid chính là docId) hoặc Admin truy cập
       allow read, write: if (collectionName == "users" || collectionName == "người dùng")
                           && (isAdmin() || (isSignedIn() && request.auth.uid == docId));
       allow list: if (collectionName == "users" || collectionName == "người dùng") && isAdmin();
       
-      // 2. Bộ sưu tập 'guests' & 'khách'
+      // Bộ sưu tập 'guests' & 'khách': Cho phép bất kỳ người dùng đã đăng nhập (vì docId là fingerprint thiết bị) hoặc Admin truy cập
       allow read, write: if (collectionName == "guests" || collectionName == "khách")
                           && (isAdmin() || isSignedIn());
       allow list: if (collectionName == "guests" || collectionName == "khách") && isAdmin();
       
-      // 3. Bộ sưu tập 'devices' & 'thiết bị'
+      // Bộ sưu tập 'devices' & 'thiết bị': Cho phép bất kỳ người dùng đã đăng nhập (vì docId là fingerprint thiết bị) hoặc Admin truy cập
       allow read, write: if (collectionName == "devices" || collectionName == "thiết bị") && isSignedIn();
       allow list: if (collectionName == "devices" || collectionName == "thiết bị") && isAdmin();
-      
-      // 4. Bộ sưu tập 'statistics'
-      allow read, write: if collectionName == "statistics";
     }
   }
 }`);
-                      setToast({ message: "Đã sao chép cấu hình Rules sửa lỗi vào Clipboard!", type: 'success' });
+                      setToast({ message: "Đã sao chép cấu hình Rules công khai statistics vào Clipboard!", type: 'success' });
                     }}
                     className="text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
                   >
@@ -1401,6 +1442,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    match /statistics/{document=**} {
+      allow read, write: if true;
+    }
+
     match /{collectionName}/{docId} {
       allow read, write: if (collectionName == "users" || collectionName == "người dùng")
                           && (isAdmin() || (isSignedIn() && request.auth.uid == docId));
@@ -1412,8 +1457,6 @@ service cloud.firestore {
 
       allow read, write: if (collectionName == "devices" || collectionName == "thiết bị") && isSignedIn();
       allow list: if (collectionName == "devices" || collectionName == "thiết bị") && isAdmin();
-
-      allow read, write: if collectionName == "statistics";
     }
   }
 }`}
