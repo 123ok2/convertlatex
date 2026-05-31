@@ -12,7 +12,9 @@ import {
   signInAnonymously,
   signOut,
   setPersistence,
-  browserLocalPersistence
+  browserLocalPersistence,
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
 import { 
   doc, 
@@ -46,7 +48,9 @@ import {
   Calendar,
   TrendingUp,
   Users,
-  RefreshCw
+  RefreshCw,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 /**
@@ -246,6 +250,8 @@ const formatAiPastedContent = (text: string): string => {
   return formattedLines.join('\n');
 };
 
+let visitLogged = false;
+
 export default function App() {
   const [user, setUser] = useState<any | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -254,14 +260,17 @@ export default function App() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   
   const [showConfigError, setShowConfigError] = useState(false);
   const [showPermissionError, setShowPermissionError] = useState(false);
   const [showCreditAlert, setShowCreditAlert] = useState(false);
+  const [unauthorizedDomainError, setUnauthorizedDomainError] = useState<string | null>(null);
   
   const [content, setContent] = useState<string>('');
   const [previewContent, setPreviewContent] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
+  const [previewMode, setPreviewMode] = useState<'web' | 'word'>('web');
   const [isAiProcessing, setIsAiProcessing] = useState<boolean>(false);
   const [isDeducting, setIsDeducting] = useState(false);
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
@@ -324,7 +333,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    logVisit();
+    if (!visitLogged) {
+      visitLogged = true;
+      logVisit();
+    }
     // Tự động cập nhật số liệu công khai định kỳ mỗi 15 giây
     const intervalId = setInterval(() => {
       loadStats().catch(err => console.warn("Periodic stats load failed:", err));
@@ -498,6 +510,12 @@ export default function App() {
 
     // 2. Chạy đếm thực tế (recount) trực tiếp từ các collection để cập nhật số liệu chính xác tuyệt đối
     try {
+      // 2. Chỉ chạy đếm thực tế (recount) trực tiếp nếu là Admin để tiết kiệm tài nguyên và bảo mật tuyệt đối, tránh bị ghi đè dữ liệu
+      const isAdminUser = auth.currentUser && (auth.currentUser.email === "duyconghanh2017@gmail.com" || auth.currentUser.email === "rongtiendatto@gmail.com");
+      if (!isAdminUser) {
+        return; // Người dùng thường chỉ đọc dữ liệu tổng hợp ở bước 1, không tự đếm tránh bị rules chặn
+      }
+
       const usersColEng = collection(db, 'users');
       const usersColVie = collection(db, 'người dùng');
       const guestsColEng = collection(db, 'guests');
@@ -515,8 +533,8 @@ export default function App() {
         getCountFromServer(guestsColVie).catch(() => null)
       ]);
 
-      // Nếu truy vấn đếm trực tiếp thành công (tránh bị rules chặn)
-      if (usersSnapEng !== null || usersSnapVie !== null || guestsSnapEng !== null || guestsSnapVie !== null) {
+      // Chỉ cập nhật đồng bộ nếu TẤT CẢ các truy vấn đếm trực tiếp thành công (tránh ghi đè khi bị ném lỗi null)
+      if (usersSnapEng !== null && usersSnapVie !== null && guestsSnapEng !== null && guestsSnapVie !== null) {
         const countUsersEng = usersSnapEng ? usersSnapEng.data().count : 0;
         const countUsersVie = usersSnapVie ? usersSnapVie.data().count : 0;
         const countGuestsEng = guestsSnapEng ? guestsSnapEng.data().count : 0;
@@ -672,19 +690,59 @@ export default function App() {
       await signInAnonymously(auth);
       setToast({ message: "Đang nhận diện thiết bị...", type: 'info' });
     } catch (error: any) {
-      if (error.code === 'auth/admin-restricted-operation') setShowConfigError(true);
-      else setToast({ message: "Lỗi: " + error.message, type: 'error' });
+      console.error("Device login error:", error);
+      if (error.code === 'auth/admin-restricted-operation' || error.code === 'auth/operation-not-allowed') {
+        setShowConfigError(true);
+      } else {
+        setToast({ message: "Lỗi đăng nhập thiết bị: " + error.message, type: 'error' });
+      }
       setAuthLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setIsLoginLoading(true);
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await signInWithPopup(auth, provider);
+      setToast({ message: "Đăng nhập tài khoản Google thành công!", type: 'success' });
+    } catch (error: any) {
+      console.error("Google login error detail:", error);
+      let errorMsg = error.message || String(error);
+      
+      if (error.code === 'auth/popup-blocked') {
+        errorMsg = "Trình duyệt đã chặn cửa sổ Popup Google. Vui lòng cho phép cửa sổ bật lên (popup) trên trình duyệt hoặc nhấn nút ở góc trên để mở ứng dụng trong Tab mới.";
+      } else if (error.code === 'auth/unauthorized-domain') {
+        setUnauthorizedDomainError(window.location.hostname);
+        errorMsg = `Tên miền hiện tại (${window.location.hostname}) chưa được thêm vào mục 'Authorized domains' trong cài đặt Firebase Authentication! Vui lòng copy tên miền này thêm vào cài đặt Firebase của bạn.`;
+      } else if (error.code === 'auth/operation-not-allowed') {
+        errorMsg = "Đăng nhập Google chưa được kích hoạt trong Firebase Console. Vui lòng truy cập Authentication -> Sign-in method để bật Google Sign-In.";
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        errorMsg = "Cửa sổ đăng nhập Google đã bị đóng bởi người dùng.";
+      } else {
+        errorMsg = "Lỗi đăng nhập Google: " + errorMsg;
+      }
+      
+      setToast({ message: errorMsg, type: 'error' });
+    } finally {
+      setIsLoginLoading(false);
     }
   };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanEmail = email.trim();
     setIsLoginLoading(true);
     try {
       await setPersistence(auth, browserLocalPersistence);
-      if (isRegistering) await createUserWithEmailAndPassword(auth, email, password);
-      else await signInWithEmailAndPassword(auth, email, password);
+      if (isRegistering) {
+        await createUserWithEmailAndPassword(auth, cleanEmail, password);
+        setToast({ message: "Đăng ký tài khoản thành công!", type: 'success' });
+      } else {
+        await signInWithEmailAndPassword(auth, cleanEmail, password);
+      }
     } catch (error: any) {
       setToast({ message: "Lỗi: " + error.message, type: 'error' });
     } finally {
@@ -762,23 +820,24 @@ export default function App() {
       setIsAiProcessing(true);
       try {
         if (await deductCredit()) {
-          const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY!);
-          const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+          const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
           const base64Data = data.split(',')[1];
           
-          const result = await model.generateContent([
-            {
-              inlineData: {
-                mimeType: 'image/png',
-                data: base64Data
-              }
-            },
-            {
-              text: "Convert this handwritten math/physics/chemistry formula to LaTeX. Return ONLY the LaTeX string without any markdown formatting or dollar signs."
+          const imagePart = {
+            inlineData: {
+              mimeType: 'image/png',
+              data: base64Data
             }
-          ]);
+          };
+          const textPart = {
+            text: "Convert this handwritten math/physics/chemistry formula to LaTeX. Return ONLY the LaTeX string without any markdown formatting or dollar signs."
+          };
+          const result = await genAI.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: { parts: [imagePart, textPart] }
+          });
           
-          const text = result.response.text();
+          const text = result.text;
           if (text) {
             insertTextAtCursor(`\n$$ ${text.trim()} $$\n`);
             setToast({ message: "✨ Đã nhận diện công thức", type: 'success' });
@@ -802,32 +861,136 @@ export default function App() {
 
   if (!user) return (
     <div className="h-screen bg-slate-100 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-white">
-        <div className="bg-indigo-600 p-10 text-center relative overflow-hidden">
-          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
-          <Bot className="w-16 h-16 text-white mx-auto mb-4 relative z-10" />
-          <h1 className="text-2xl font-extrabold text-white mb-1 relative z-10">LLM Markdown Pro</h1>
-          <p className="text-indigo-100 text-sm opacity-80 relative z-10">Mỗi thiết bị nhận 20 Credits khi đăng ký</p>
+      <div className="max-w-[360px] w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200/50">
+        <div className="bg-slate-50/80 px-6 py-5 text-center border-b border-slate-100 relative">
+          <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-center mx-auto mb-2 shadow-2xs">
+            <Bot className="w-5 h-5 text-indigo-600" />
+          </div>
+          <h1 className="text-base font-extrabold text-slate-900 tracking-tight">LLM Markdown Pro</h1>
+          <p className="text-[10px] text-slate-500 font-medium mt-1">
+            {isRegistering ? "Đăng ký tài khoản nhận ngay 20 Credits" : "Mỗi thiết bị nhận 20 Credits khi đăng ký"}
+          </p>
         </div>
-        <div className="p-10">
-          <form onSubmit={handleEmailAuth} className="space-y-4">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all outline-none" placeholder="Email" required />
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all outline-none" placeholder="Mật khẩu" required />
-            <Button type="submit" disabled={isLoginLoading} className="w-full py-4 text-lg font-bold rounded-xl shadow-indigo-200 shadow-xl">
-              {isLoginLoading ? <Loader2 className="animate-spin" /> : (isRegistering ? 'Đăng ký' : 'Đăng nhập')}
+        <div className="p-6">
+          <form onSubmit={handleEmailAuth} className="space-y-3">
+            <div>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <Mail size={14} />
+                </span>
+                <input 
+                  type="email" 
+                  value={email} 
+                  onChange={(e) => setEmail(e.target.value)} 
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 focus:bg-white transition-all outline-none" 
+                  placeholder={isRegistering ? "Nhập Email đăng ký" : "Email"} 
+                  required 
+                />
+              </div>
+            </div>
+            
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <Lock size={14} />
+              </span>
+              <input 
+                type={showPassword ? "text" : "password"} 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                className="w-full pl-9 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 focus:bg-white transition-all outline-none" 
+                placeholder="Mật khẩu" 
+                required 
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none transition-colors"
+                title={showPassword ? "Ẩn mật khẩu" : "Hiển thị mật khẩu"}
+              >
+                {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+
+            <Button type="submit" disabled={isLoginLoading} className="w-full py-2 px-4 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs">
+              {isLoginLoading ? <Loader2 className="animate-spin h-3.5 w-3.5 mx-auto" /> : (isRegistering ? 'Đăng ký tài khoản thủ công' : 'Đăng nhập')}
             </Button>
-          </form>
-          <div className="mt-8 flex flex-col items-center gap-4">
-            <button onClick={() => setIsRegistering(!isRegistering)} className="text-sm font-semibold text-indigo-600 hover:text-indigo-700">
-              {isRegistering ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký ngay'}
-            </button>
-            <div className="w-full flex items-center gap-3">
+
+            <div className="flex items-center gap-2.5 py-1">
               <div className="flex-1 h-px bg-slate-100"></div>
-              <span className="text-[10px] text-slate-300 uppercase font-bold tracking-widest">Dùng thử nhanh</span>
+              <span className="text-[9px] text-slate-400 uppercase font-bold tracking-widest">Hoặc</span>
               <div className="flex-1 h-px bg-slate-100"></div>
             </div>
-            <button onClick={handleGuestLogin} className="text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors flex items-center gap-2 group">
-              <Monitor size={14} className="group-hover:scale-110 transition-transform" /> 
+
+            <button 
+              type="button"
+              onClick={handleGoogleLogin} 
+              disabled={isLoginLoading}
+              className="w-full py-2 px-4 bg-white border border-slate-200 hover:border-slate-300 rounded-lg shadow-2xs text-[11px] font-bold text-slate-700 hover:text-slate-800 hover:bg-slate-50 active:scale-98 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <span className="font-extrabold text-[13px] select-none">
+                <span className="text-[#4285F4]">G</span>
+                <span className="text-[#EA4335]">o</span>
+                <span className="text-[#FBBC05]">o</span>
+                <span className="text-[#4285F4]">g</span>
+                <span className="text-[#34A853]">l</span>
+                <span className="text-[#EA4335]">e</span>
+              </span>
+              <span>Đăng nhập qua Google</span>
+            </button>
+
+            {unauthorizedDomainError && (
+              <div className="mt-2.5 p-3 bg-red-50/65 border border-red-200/50 rounded-lg text-left text-[11px] text-red-800 space-y-2 animate-in fade-in duration-300">
+                <div className="font-bold flex items-center gap-1.5 text-red-700">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-650 animate-ping"></span>
+                  Lỗi: Tên miền chưa xác thực!
+                </div>
+                <p className="leading-relaxed opacity-90 text-[10px]">
+                  Vui lòng thêm tên miền hiện tại vào danh sách Authorized domains trong cấu hình Authentication của Firebase Console.
+                </p>
+                <div className="bg-white p-1.5 border border-red-100 rounded-md flex items-center justify-between gap-1.5 shadow-3xs">
+                  <code className="text-red-600 font-mono select-all font-semibold overflow-x-auto truncate text-[10px] block max-w-[180px]">{unauthorizedDomainError}</code>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(unauthorizedDomainError);
+                      setToast({ message: "Đã sao chép tên miền!", type: 'success' });
+                    }}
+                    className="shrink-0 bg-slate-100 hover:bg-slate-200 text-[9px] font-extrabold px-2 py-1 rounded text-slate-700 active:scale-95 transition-all"
+                  >
+                    Sao chép
+                  </button>
+                </div>
+                <div className="pt-0.5 flex gap-1.5 text-[9px]">
+                  <a 
+                    href="https://console.firebase.google.com/project/okoko-807c1/authentication/providers"
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center font-bold px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded transition-colors shadow-sm"
+                  >
+                    ⚙️ Firebase Console →
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setUnauthorizedDomainError(null)}
+                    className="inline-flex items-center justify-center font-semibold px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded transition-colors"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            )}
+          </form>
+          <div className="mt-5 flex flex-col items-center gap-3">
+            <button onClick={() => { setIsRegistering(!isRegistering); setEmail(''); setPassword(''); }} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer">
+              {isRegistering ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký ngay'}
+            </button>
+            <div className="w-full flex items-center gap-2">
+              <div className="flex-1 h-px bg-slate-100"></div>
+              <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider">Dùng thử nhanh</span>
+              <div className="flex-1 h-px bg-slate-100"></div>
+            </div>
+            <button onClick={handleGuestLogin} className="text-xs font-bold text-slate-500 hover:text-indigo-600 transition-colors flex items-center gap-1.5 group cursor-pointer">
+              <Monitor size={12} className="group-hover:scale-110 transition-transform text-slate-400 group-hover:text-indigo-500" /> 
               Vào nhanh bằng ID Thiết bị (10 Credit)
             </button>
           </div>
@@ -838,6 +1001,59 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 overflow-hidden select-none">
+      {/* Thanh Header Bản Quyền & Liên Hệ */}
+      <div className="bg-slate-950 text-slate-300 text-[11px] px-8 py-1.5 flex items-center justify-between no-print z-50 select-none border-b border-slate-900 shrink-0">
+        <style>{`
+          @keyframes glow-author {
+            0%, 100% {
+              text-shadow: 0 0 4px rgba(99, 102, 241, 0.8), 0 0 12px rgba(99, 102, 241, 0.4);
+              color: #ffffff;
+            }
+            50% {
+              text-shadow: 0 0 1px rgba(99, 102, 241, 0.1);
+              color: #cbd5e1;
+            }
+          }
+          @keyframes glow-zalo {
+            0%, 100% {
+              box-shadow: 0 0 8px rgba(14, 165, 233, 0.4), inset 0 0 3px rgba(14, 165, 233, 0.2);
+              border-color: rgba(56, 189, 248, 0.6);
+              background-color: rgba(15, 23, 42, 0.85);
+            }
+            50% {
+              box-shadow: 0 0 2px rgba(14, 165, 233, 0.1), inset 0 0 1px rgba(14, 165, 233, 0.05);
+              border-color: rgba(56, 189, 248, 0.2);
+              background-color: rgba(15, 23, 42, 0.4);
+            }
+          }
+          .animate-glow-author {
+            animation: glow-author 2.5s ease-in-out infinite;
+          }
+          .animate-glow-zalo {
+            animation: glow-zalo 3s ease-in-out infinite;
+          }
+        `}</style>
+        <div className="flex items-center gap-2 font-medium">
+          <span className="text-indigo-400 animate-pulse">©</span>
+          <span>Bản quyền thuộc về tác giả: <strong className="font-extrabold ml-1 tracking-wide animate-glow-author">Duy Hạnh</strong></span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-slate-800">|</span>
+          <a 
+            href="https://zalo.me/0868640898" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="flex items-center gap-1.5 transition-all duration-300 text-[11px] border px-2.5 py-1 rounded-lg animate-glow-zalo hover:scale-[1.02] cursor-pointer"
+          >
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-sky-400"></span>
+            </span>
+            <span>Zalo hỗ trợ: <strong className="text-sky-300 font-extrabold ml-0.5 tracking-wide">0868.640.898</strong></span>
+          </a>
+        </div>
+      </div>
+
       {toast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 duration-300">
           <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl shadow-2xl border ${
@@ -869,46 +1085,46 @@ export default function App() {
 
         <div className="flex items-center gap-4">
           {/* Thống kê công khai và tự động cập nhật trực tiếp trên thanh công cụ */}
-          <div className="hidden lg:flex items-center gap-3 bg-slate-50 border border-slate-200/70 rounded-2xl p-1.5 pr-3 shadow-xs font-sans text-xs shrink-0 select-none">
+          <div className="hidden lg:flex items-center gap-2 bg-slate-100/60 border border-slate-200/50 rounded-2xl p-1 shrink-0 select-none shadow-2xs font-sans">
             {/* Truy cập hôm nay */}
-            <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-xl border border-slate-100 shadow-2xs">
+            <div className="flex items-center gap-2 py-1 px-2.5 bg-white rounded-xl border border-slate-200/40 shadow-3xs hover:bg-slate-50/50 transition-colors">
               <span className="text-sm select-none">📅</span>
               <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Hôm nay</p>
-                <p className="font-extrabold text-slate-900 mt-0.5 leading-none">
+                <p className="text-[8px] font-extrabold text-slate-400 hover:text-indigo-500 uppercase tracking-widest leading-none">Hôm nay</p>
+                <p className="font-extrabold text-slate-900 mt-1 leading-none text-[11px]">
                   {(stats.daily?.[new Date().toISOString().slice(0, 10)] || 0).toLocaleString('vi-VN')}
                 </p>
               </div>
             </div>
 
             {/* Tổng truy cập */}
-            <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-xl border border-slate-100 shadow-2xs">
+            <div className="flex items-center gap-2 py-1 px-2.5 bg-white rounded-xl border border-slate-200/40 shadow-3xs hover:bg-slate-50/50 transition-colors">
               <span className="text-sm select-none">🌍</span>
               <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Tổng truy cập</p>
-                <p className="font-extrabold text-slate-900 mt-0.5 leading-none">
+                <p className="text-[8px] font-extrabold text-slate-400 hover:text-emerald-500 uppercase tracking-widest leading-none">Tổng truy cập</p>
+                <p className="font-extrabold text-sky-600 mt-1 leading-none text-[11px]">
                   {((stats.total || 0) + 100000).toLocaleString('vi-VN')}
                 </p>
               </div>
             </div>
 
             {/* Thành viên */}
-            <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-xl border border-slate-100 shadow-2xs">
+            <div className="flex items-center gap-2 py-1 px-2.5 bg-white rounded-xl border border-slate-200/40 shadow-3xs hover:bg-slate-50/50 transition-colors">
               <span className="text-sm select-none">👤</span>
               <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Thành viên</p>
-                <p className="font-extrabold text-slate-900 mt-0.5 leading-none">
+                <p className="text-[8px] font-extrabold text-slate-400 hover:text-blue-500 uppercase tracking-widest leading-none">Thành viên</p>
+                <p className="font-extrabold text-indigo-600 mt-1 leading-none text-[11px]">
                   {registeredAccountsCount !== null ? (registeredAccountsCount + 10000).toLocaleString('vi-VN') : "..."}
                 </p>
               </div>
             </div>
 
             {/* Khách ẩn danh */}
-            <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-xl border border-slate-100 shadow-2xs">
+            <div className="flex items-center gap-2 py-1 px-2.5 bg-white rounded-xl border border-slate-200/40 shadow-3xs hover:bg-slate-50/50 transition-colors">
               <span className="text-sm select-none">🕵️</span>
               <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Khách</p>
-                <p className="font-extrabold text-slate-900 mt-0.5 leading-none">
+                <p className="text-[8px] font-extrabold text-slate-400 hover:text-amber-500 uppercase tracking-widest leading-none">Khách</p>
+                <p className="font-extrabold text-amber-600 mt-1 leading-none text-[11px]">
                   {anonymousAccountsCount !== null ? anonymousAccountsCount.toLocaleString('vi-VN') : "..."}
                 </p>
               </div>
@@ -916,36 +1132,36 @@ export default function App() {
           </div>
 
           {/* Thống kê rút gọn trên thiết bị di động */}
-          <div className="flex lg:hidden items-center gap-2 bg-slate-50 border border-slate-200/50 rounded-xl px-2.5 py-1.5 shadow-xs text-[10px] select-none font-sans">
-            <span className="font-extrabold text-slate-700 flex items-center gap-1">
+          <div className="flex lg:hidden items-center gap-2 bg-slate-100/60 border border-slate-200/50 rounded-xl px-2.5 py-1.5 shadow-3xs text-[10px] select-none font-sans font-semibold">
+            <span className="text-[#0ea5e9] flex items-center gap-1">
               <span>🌍</span> {((stats.total || 0) + 100000).toLocaleString('vi-VN')}
             </span>
             <span className="text-slate-300">|</span>
-            <span className="font-extrabold text-indigo-600 flex items-center gap-1">
+            <span className="text-indigo-600 flex items-center gap-1">
               <span>👤</span> {registeredAccountsCount !== null ? (registeredAccountsCount + 10000).toLocaleString('vi-VN') : "..."}
             </span>
             <span className="text-slate-300">|</span>
-            <span className="font-extrabold text-amber-600 flex items-center gap-1">
+            <span className="text-amber-600 flex items-center gap-1">
               <span>🕵️</span> {anonymousAccountsCount !== null ? anonymousAccountsCount.toLocaleString('vi-VN') : "..."}
             </span>
           </div>
 
-           <div className="flex items-center gap-3 px-5 py-2.5 bg-yellow-50 text-yellow-700 border border-yellow-100 rounded-2xl shadow-sm">
-             <div className="w-8 h-8 bg-yellow-400 rounded-xl flex items-center justify-center shadow-sm">
-                <Zap className="text-white" size={16} fill="white" />
+           <div className="flex items-center gap-3 px-4 py-1.5 bg-gradient-to-r from-amber-50 to-amber-100/30 text-amber-800 border border-amber-200 hover:border-amber-300 rounded-xl shadow-2xs transition-colors duration-200 select-none">
+             <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-500 rounded-lg flex items-center justify-center shadow-xs">
+                <Zap className="text-white" size={15} fill="white" />
              </div>
              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Số dư</p>
-                <p className="text-lg font-black leading-none">{credits ?? 0} Credits</p>
+                <p className="text-[8px] font-black text-amber-600 tracking-wider uppercase leading-none">Số dư</p>
+                <p className="text-sm font-black text-amber-950 mt-1 leading-none">{credits ?? 0} Credits</p>
              </div>
            </div>
 
            <div className="relative" onClick={(e) => e.stopPropagation()}>
-             <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 hover:bg-white transition-all">
-               <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-md ${user.isGuest ? 'bg-orange-500' : 'bg-indigo-600'}`}>
-                 {user.isGuest ? <Monitor size={20} /> : (user.email?.[0].toUpperCase() || 'U')}
+             <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 hover:bg-white transition-all shadow-3xs cursor-pointer">
+               <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white shadow-xs transition-all duration-200 ${user.isGuest ? 'bg-gradient-to-br from-orange-400 to-orange-500' : 'bg-gradient-to-br from-indigo-550 to-indigo-600'}`}>
+                 {user.isGuest ? <Monitor size={16} /> : (user.email?.[0].toUpperCase() || 'U')}
                </div>
-               <ChevronDown size={16} className={`text-slate-400 mr-2 transition-transform duration-200 ${showProfileMenu ? 'rotate-180' : ''}`} />
+               <ChevronDown size={14} className={`text-slate-400 mr-1 transition-transform duration-200 ${showProfileMenu ? 'rotate-180' : ''}`} />
              </button>
              
              {showProfileMenu && (
@@ -994,8 +1210,9 @@ export default function App() {
         fileInputRef={fileInputRef}
         onCopyFormatted={async () => {
           const previewEl = document.getElementById('markdown-preview-content');
-          if (previewEl && await deductCredit()) {
-             try {
+          if (!previewEl) return;
+          try {
+             if (await deductCredit()) {
                 const clone = previewEl.cloneNode(true) as HTMLElement;
                 
                 // 1. Dọn dẹp: Xóa phần KaTeX HTML thừa
@@ -1016,20 +1233,23 @@ export default function App() {
                   }
                 });
 
-                // 3. Xóa các class Tailwind để tránh Word bị rối (giữ cấu trúc trần)
-                const allElements = clone.querySelectorAll('*');
-                allElements.forEach(el => {
+                // 3. Xóa các class Tailwind hiệu năng cao bằng cách chỉ nhắm mục tiêu phần tử có class
+                clone.querySelectorAll('[class]').forEach(el => {
                     el.removeAttribute('class');
-                    // Word ưu tiên thuộc tính style trực tiếp
-                    if (el.tagName === 'TABLE') {
-                        (el as HTMLElement).style.borderCollapse = 'collapse';
-                        (el as HTMLElement).style.width = '100%';
-                        (el as HTMLElement).style.border = '1px solid black';
-                    }
-                    if (el.tagName === 'TD' || el.tagName === 'TH') {
-                        (el as HTMLElement).style.border = '1px solid black';
-                        (el as HTMLElement).style.padding = '5pt';
-                    }
+                });
+                
+                // Word ưu tiên thuộc tính style trực tiếp
+                clone.querySelectorAll('table').forEach(el => {
+                    const tableEl = el as HTMLElement;
+                    tableEl.style.borderCollapse = 'collapse';
+                    tableEl.style.width = '100%';
+                    tableEl.style.border = '1px solid black';
+                });
+                
+                clone.querySelectorAll('td, th').forEach(el => {
+                    const cellEl = el as HTMLElement;
+                    cellEl.style.border = '1px solid black';
+                    cellEl.style.padding = '5pt';
                 });
                 
                 const fullHtml = `
@@ -1070,74 +1290,117 @@ export default function App() {
                     ["text/plain"]: textBlob
                   })
                 ]);
-                setToast({ message: "✅ Đã sao chép định dạng tối ưu cho Word", type: 'success' });
-             } catch (err: any) {
-                console.error('Clipboard error:', err);
-                setToast({ message: "❌ Lỗi clipboard: Hãy click vào trang web trước khi nhấn Copy", type: 'error' });
+                setToast({ message: "✅ Đã sao chép định dạng tối ưu cho Word!", type: 'success' });
              }
+          } catch (err: any) {
+             console.error('Clipboard error:', err);
+             setToast({ message: "❌ Lỗi sao chép: Vui lòng tương tác với trang web trước khi nhấn Copy", type: 'error' });
           }
         }} 
-        onPrint={async () => { if (await deductCredit()) window.print(); }} 
+        onPrint={async () => { 
+          if (await deductCredit()) {
+             window.print(); 
+          }
+        }} 
         onExportWord={async () => {
-          const previewEl = document.getElementById('markdown-preview-content');
-          if (previewEl && await deductCredit()) {
-             const clone = previewEl.cloneNode(true) as HTMLElement;
-             
-             // 1. Dọn dẹp tương tự copy
-             clone.querySelectorAll('.katex-html').forEach(el => el.remove());
-             clone.querySelectorAll('.katex-mathml').forEach(el => {
-                const isBlock = el.closest('.katex-display') !== null;
-                const style = (el as HTMLElement).style;
-                style.display = isBlock ? 'block' : 'inline';
-                style.clip = 'auto';
-                style.height = 'auto';
-                style.width = 'auto';
-                style.overflow = 'visible';
-                if (isBlock) {
-                    style.textAlign = 'center';
-                    style.margin = '12pt 0';
-                }
-             });
+        onExportWord={async () => {
+  const previewEl = document.getElementById('markdown-preview-content');
+  if (!previewEl) return;
+  try {
+     // 1. Thông báo bắt đầu xử lý
+     setToast({ message: "⏳ Đang chuẩn bị tệp Word để tải xuống...", type: 'info' });
+     
+     // 2. Trừ điểm credit (nếu có)
+     if (await deductCredit()) {
+        const clone = previewEl.cloneNode(true) as HTMLElement;
+        
+        // 3. Tối ưu dọn dẹp MathJax/KaTeX
+        clone.querySelectorAll('.katex-html').forEach(el => el.remove());
+        clone.querySelectorAll('.katex-mathml').forEach(el => {
+           const isBlock = el.closest('.katex-display') !== null;
+           const style = (el as HTMLElement).style;
+           style.display = isBlock ? 'block' : 'inline';
+           style.clip = 'auto';
+           style.height = 'auto';
+           style.width = 'auto';
+           style.overflow = 'visible';
+           if (isBlock) {
+               style.textAlign = 'center';
+               style.margin = '12pt 0';
+           }
+        });
 
-             const allElements = clone.querySelectorAll('*');
-             allElements.forEach(el => {
-                 el.removeAttribute('class');
-                 if (el.tagName === 'TABLE') (el as HTMLElement).style.borderCollapse = 'collapse';
-             });
+        // 4. Xóa Tailwind classes và định dạng bảng trực tiếp
+        // Thay vì chạy nhiều vòng lặp forEach riêng lẻ gây chậm, gộp chung xử lý DOM
+        clone.querySelectorAll('*').forEach(el => {
+            const htmlEl = el as HTMLElement;
+            // Xóa class của Tailwind để file Word sạch gọn
+            if (htmlEl.hasAttribute('class')) {
+                htmlEl.removeAttribute('class');
+            }
+            // Nếu là bảng, tự động định dạng luôn layout chuẩn Word
+            if (htmlEl.tagName === 'TABLE') {
+                htmlEl.style.borderCollapse = 'collapse';
+                htmlEl.style.width = '100%';
+                htmlEl.style.border = '1px solid black';
+            }
+            if (htmlEl.tagName === 'TD' || htmlEl.tagName === 'TH') {
+                htmlEl.style.border = '1px solid black';
+                htmlEl.style.padding = '5pt';
+            }
+        });
 
-             const fullHtml = `
-               <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-               <head>
-                 <meta charset='utf-8'>
-                 <!--[if gte mso 9]>
-                 <xml>
-                   <w:WordDocument>
-                     <w:View>Print</w:View>
-                   </w:WordDocument>
-                 </xml>
-                 <![endif]-->
-                 <style>
-                   body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; color: black; }
-                   table { border: 1px solid black; border-collapse: collapse; width: 100%; }
-                   th, td { border: 1px solid black; padding: 5pt; }
-                   h1, h2, h3 { color: #1e40af; font-weight: bold; }
-                 </style>
-               </head>
-               <body>
-                 ${clone.innerHTML}
-               </body>
-               </html>
-             `;
-             const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
-             const link = document.createElement('a');
-             link.href = URL.createObjectURL(blob);
-             link.download = `Document_${Date.now()}.doc`;
-             link.click();
-             setToast({ message: "📁 Đã xuất file Word thành công", type: 'success' });
-          }
-        }} 
-        onClear={() => { if (confirm('Xóa toàn bộ nội dung?')) setContent(''); }}
-        onOptimize={handleOfflineEnhance}
+        // 5. Tạo cấu trúc file HTML chuẩn Word (Bổ sung thiết lập trang Print chuẩn Office)
+        const fullHtml = `
+          <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+          <head>
+            <meta charset='utf-8'>
+            <style>
+              body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; color: black; }
+              table { border: 1px solid black; border-collapse: collapse; width: 100%; margin-bottom: 15pt; }
+              th, td { border: 1px solid black; padding: 5pt; }
+              h1, h2, h3 { color: #1e40af; font-weight: bold; }
+              h1 { font-size: 18pt; }
+              h2 { font-size: 16pt; }
+              h3 { font-size: 14pt; }
+              p { margin-bottom: 10pt; }
+            </style>
+          </head>
+          <body>
+            ${clone.innerHTML}
+          </body>
+          </html>
+        `;
+
+        // 6. Kích hoạt tải xuống tức thì (Xóa bỏ hoàn toàn các cấu trúc delay 250ms/350ms)
+        const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
+        const url = URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Document_${Date.now()}.doc`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Hiển thị thông báo thành công ngay lập tức
+        setToast({ message: "📁 Đã hoàn tất kết xuất và lưu file Word thành công vào máy tính!", type: 'success' });
+        
+        // Chỉ thu hồi URL sau một khoảng thời gian ngắn chạy ngầm để tránh rác bộ nhớ
+        setTimeout(() => {
+           URL.revokeObjectURL(url);
+        }, 100);
+     }
+  } catch (error) {
+     console.error('Export Word error:', error);
+     setToast({ message: "❌ Gặp lỗi trong quá trình kết xuất Word", type: 'error' });
+  }
+}}
+        onClear={() => {
+          setContent('');
+          setPreviewContent('');
+        }}
+        
       />
 
       <main className="flex-1 flex overflow-hidden">
@@ -1167,8 +1430,44 @@ export default function App() {
           />
         </div>
         <div className={`flex flex-col flex-1 bg-white overflow-y-auto custom-scrollbar transition-all ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
-           <div className="flex-1 py-12 px-8 md:px-16 max-w-4xl mx-auto w-full">
-              <MarkdownPreview content={previewContent || content} />
+           <div className="flex-1 py-4 md:py-6 px-4 md:px-8 max-w-4xl mx-auto w-full">
+              {/* Tùy chỉnh chế độ xem trước */}
+              <div className="flex justify-between items-center pb-3 border-b border-slate-100 mb-4 select-none no-print">
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5`}>
+                    <span className={previewMode === 'word' ? 'text-indigo-500' : 'text-emerald-500'}>●</span>
+                    <span className="text-slate-500 font-extrabold">
+                      XEM TRƯỚC: {previewMode === 'word' ? 'CHUẨN WORD' : 'CHUẨN WEB'}
+                    </span>
+                  </span>
+                </div>
+                <div className="flex bg-slate-100/50 p-1 rounded-xl border border-slate-200/80">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('web')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      previewMode === 'web' 
+                        ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' 
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    🤪 Bản Web
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('word')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      previewMode === 'word' 
+                        ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/50' 
+                        : 'text-slate-500 hover:text-indigo-600'
+                    }`}
+                  >
+                    📝 Bản Word
+                  </button>
+                </div>
+              </div>
+
+              <MarkdownPreview content={previewContent || content} previewMode={previewMode} />
            </div>
         </div>
       </main>
@@ -1176,23 +1475,176 @@ export default function App() {
       <DrawingModal isOpen={isDrawingModalOpen} onClose={() => setIsDrawingModalOpen(false)} onSubmit={handleDrawingSubmit} isProcessing={isAiProcessing} />
 
       {showPermissionError && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white max-w-2xl w-full rounded-[32px] overflow-hidden shadow-2xl">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white max-w-2xl w-full rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="bg-amber-50 p-8 flex items-center gap-4 border-b border-amber-100">
-              <Lock size={32} className="text-amber-600" />
+              <Lock size={32} className="text-amber-600 animate-pulse" />
               <h3 className="text-2xl font-black text-slate-900">Lỗi phân quyền Firestore</h3>
             </div>
             <div className="p-8 space-y-6">
-              <p className="text-slate-600 text-sm">Cần bổ sung Collection <b>'devices'</b> và <b>'statistics'</b> vào Security Rules:</p>
-              <pre className="bg-slate-900 text-indigo-300 p-6 rounded-2xl text-[11px] font-mono overflow-x-auto">
-{`match /devices/{deviceId} {
-  allow read, write: if request.auth != null;
-}
-match /statistics/{statId} {
-  allow read, write: if request.auth != null;
+              <p className="text-slate-600 text-sm leading-relaxed">
+                Ứng dụng cần quyền đọc/ghi các bộ sưu tập <b>'devices'</b>, <b>'statistics'</b>, <b>'users'</b>, <b>'guests'</b> trong Firestore. Hãy cập nhật <b>Security Rules</b> của bạn trong Firebase Console để xử lý lỗi này.
+              </p>
+              
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Toàn bộ Security Rules mới (Đã sửa đổi công khai phần statistics):</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Kiểm tra quyền Admin
+    function isAdmin() {
+      return request.auth != null && (request.auth.token.email == "duyconghanh2017@gmail.com" || request.auth.token.email == "rongtiendatto@gmail.com");
+    }
+
+    // Kiểm tra người dùng đã đăng nhập
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // --- CẤU HÌNH QUYỀN TRUY CẬP ---
+
+    // 1. Bộ sưu tập 'statistics' hoàn toàn công khai cho tất cả mọi người (đọc/ghi tự do không cần đăng nhập)
+    match /statistics/{document=**} {
+      allow read, write: if true;
+    }
+
+    // 2. Sử dụng wildcard động cho tất cả bộ sưu tập còn lại để hỗ trợ tên tiếng Việt có dấu trong Firestore Security Rules
+    match /{collectionName}/{docId} {
+      
+      // Bộ sưu tập 'users' & 'người dùng': Cho phép chủ sở hữu (uid chính là docId) hoặc Admin truy cập
+      allow read, write: if (collectionName == "users" || collectionName == "người dùng")
+                          && (isAdmin() || (isSignedIn() && request.auth.uid == docId));
+      allow list: if (collectionName == "users" || collectionName == "người dùng") && isAdmin();
+      
+      // Bộ sưu tập 'guests' & 'khách': Cho phép bất kỳ người dùng đã đăng nhập (vì docId là fingerprint thiết bị) hoặc Admin truy cập
+      allow read, write: if (collectionName == "guests" || collectionName == "khách")
+                          && (isAdmin() || isSignedIn());
+      allow list: if (collectionName == "guests" || collectionName == "khách") && isAdmin();
+      
+      // Bộ sưu tập 'devices' & 'thiết bị': Cho phép bất kỳ người dùng đã đăng nhập (vì docId là fingerprint thiết bị) hoặc Admin truy cập
+      allow read, write: if (collectionName == "devices" || collectionName == "thiết bị") && isSignedIn();
+      allow list: if (collectionName == "devices" || collectionName == "thiết bị") && isAdmin();
+    }
+  }
+}`);
+                      setToast({ message: "Đã sao chép cấu hình Rules công khai statistics vào Clipboard!", type: 'success' });
+                    }}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    📋 Sao chép cấu hình Rules mới nhất
+                  </button>
+                </div>
+                <pre className="bg-slate-900 text-indigo-300 p-6 rounded-2xl text-[11px] font-mono overflow-y-auto max-h-72 leading-relaxed border border-slate-800">
+{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && (request.auth.token.email == "duyconghanh2017@gmail.com" || request.auth.token.email == "rongtiendatto@gmail.com");
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    match /statistics/{document=**} {
+      allow read, write: if true;
+    }
+
+    match /{collectionName}/{docId} {
+      allow read, write: if (collectionName == "users" || collectionName == "người dùng")
+                          && (isAdmin() || (isSignedIn() && request.auth.uid == docId));
+      allow list: if (collectionName == "users" || collectionName == "người dùng") && isAdmin();
+
+      allow read, write: if (collectionName == "guests" || collectionName == "khách")
+                          && (isAdmin() || isSignedIn());
+      allow list: if (collectionName == "guests" || collectionName == "khách") && isAdmin();
+
+      allow read, write: if (collectionName == "devices" || collectionName == "thiết bị") && isSignedIn();
+      allow list: if (collectionName == "devices" || collectionName == "thiết bị") && isAdmin();
+    }
+  }
 }`}
-              </pre>
-              <Button onClick={() => setShowPermissionError(false)} className="w-full py-4 rounded-2xl">Đã cập nhật</Button>
+                </pre>
+              </div>
+
+              <div className="bg-slate-50 p-5 rounded-2xl text-xs space-y-2 border border-slate-100 text-slate-700">
+                <div className="font-bold text-slate-800">🛠️ 3 bước kích hoạt cực kỳ đơn giản:</div>
+                <ol className="list-decimal pl-4.5 space-y-1 leading-relaxed">
+                  <li>Click nút <b>Mở Firebase Rules</b> ở dưới (hoặc vào Firebase Console dự án của bạn).</li>
+                  <li>Dán đoạn mã trên vào bên trong block <code className="bg-slate-200 px-1 py-0.2 rounded font-mono text-slate-600">match /databases/&#123;database&#125;/documents</code>.</li>
+                  <li>Click nút <b>Publish</b> (Xuất bản) màu xanh ở góc trên bên phải để áp dụng ngay.</li>
+                </ol>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <a 
+                  href="https://console.firebase.google.com/project/okoko-807c1/firestore/rules" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white rounded-2xl text-center font-bold text-sm transition-all shadow-md shadow-indigo-150 flex items-center justify-center gap-2"
+                >
+                  ⚙️ Mở Firebase Rules của bạn →
+                </a>
+                <Button 
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowPermissionError(false)} 
+                  className="py-4 px-6 rounded-2xl text-slate-700 font-bold border-slate-200"
+                >
+                  Đóng/Bỏ qua
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showConfigError && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white max-w-2xl w-full rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="bg-red-50 p-8 flex items-center gap-4 border-b border-red-100">
+              <ShieldAlert size={32} className="text-red-600 animate-pulse" />
+              <h3 className="text-2xl font-black text-slate-900">Lỗi: Chưa bật đăng ký ẩn danh</h3>
+            </div>
+            <div className="p-8 space-y-5">
+              <p className="text-slate-600 text-sm leading-relaxed">
+                Tính năng <b>Đăng ký / Vào nhanh bằng ID thiết bị</b> chưa được bật trong trang quản lý Firebase của dự án này. Vui lòng kích hoạt theo hướng dẫn dưới đây để khắc phục lỗi.
+              </p>
+              <div className="bg-slate-50 p-5 rounded-2xl space-y-2 border border-slate-100 text-xs text-slate-700">
+                <div className="font-bold text-slate-800 flex items-center gap-1.5 mb-1 text-sm">
+                  <span>⚙️ Cách kích hoạt trong 30 giây:</span>
+                </div>
+                <ol className="list-decimal pl-4.5 space-y-2 leading-relaxed">
+                  <li>Mở <b>Firebase Console</b> của bạn.</li>
+                  <li>Go to <b>Authentication</b> → tab <b>Sign-in method</b> (Phương thức đăng nhập).</li>
+                  <li>Chọn <b>Add new provider</b> (hoặc dòng <b>Anonymous</b>).</li>
+                  <li>Gạt công tắc sang <b>Enable</b> (Bật) và nhấn nút <b>Save</b> (Lưu) để hoàn tất.</li>
+                </ol>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <a 
+                  href="https://console.firebase.google.com/project/okoko-807c1/authentication/providers" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white rounded-2xl text-center font-bold text-sm transition-all shadow-md shadow-indigo-150 flex items-center justify-center gap-2"
+                >
+                  ⚙️ Vào trang Firebase Console ngay →
+                </a>
+                <Button 
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowConfigError(false)} 
+                  className="py-4 px-6 rounded-2xl text-slate-700 font-bold border-slate-200"
+                >
+                  Đóng
+                </Button>
+              </div>
             </div>
           </div>
         </div>
