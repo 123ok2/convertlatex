@@ -270,6 +270,16 @@ export default function App() {
   const [content, setContent] = useState<string>('');
   const [previewContent, setPreviewContent] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
+  const [previewZoom, setPreviewZoom] = useState<number>(100);
+  
+  const increaseZoom = () => {
+    setPreviewZoom(prev => Math.min(prev + 10, 200));
+  };
+
+  const decreaseZoom = () => {
+    setPreviewZoom(prev => Math.max(prev - 10, 50));
+  };
+
   const [isAiProcessing, setIsAiProcessing] = useState<boolean>(false);
   const [isDeducting, setIsDeducting] = useState(false);
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
@@ -1383,11 +1393,54 @@ export default function App() {
             placeholder="Dán nội dung vào đây..." 
           />
         </div>
-        <div className={`flex flex-col flex-1 bg-white overflow-y-auto custom-scrollbar transition-all ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
-           <div className="flex-1 py-4 md:py-6 px-4 md:px-8 max-w-4xl mx-auto w-full">
-
-
-              <MarkdownPreview content={previewContent || content} previewMode="web" />
+        <div className={`flex flex-col flex-1 bg-white overflow-hidden transition-all ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
+           {/* Thanh công cụ zoom xem trước */}
+           <div className="flex items-center justify-between px-6 py-2 bg-slate-50 border-b border-slate-200/60 no-print select-none shrink-0 animate-in fade-in duration-300">
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Xem trước tài liệu</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={decreaseZoom}
+                  className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-slate-200/40 active:scale-90 transition-all font-bold text-xs border border-slate-200/80 bg-white shadow-xs cursor-pointer"
+                  title="Giảm kích thước chữ/hình ảnh (A-)"
+                >
+                  A-
+                </button>
+                <span className="text-[11px] font-mono font-bold text-indigo-600 px-2 min-w-[48px] text-center bg-indigo-50/50 py-1 rounded-lg border border-indigo-100/50">
+                  {previewZoom}%
+                </span>
+                <button
+                  type="button"
+                  onClick={increaseZoom}
+                  className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-slate-200/40 active:scale-90 transition-all font-bold text-xs border border-slate-200/80 bg-white shadow-xs cursor-pointer"
+                  title="Tăng kích thước chữ/hình ảnh (A+)"
+                >
+                  A+
+                </button>
+                
+                <div className="w-[1px] h-3.5 bg-slate-200/80 mx-1"></div>
+                
+                <button
+                  type="button"
+                  onClick={() => setPreviewZoom(100)}
+                  className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-200/40 active:scale-95 transition-all text-center cursor-pointer uppercase tracking-wider border border-slate-200/40 bg-white"
+                  title="Đưa về kích thước mặc định"
+                >
+                  Mặc định
+                </button>
+              </div>
+           </div>
+           
+           <div className="flex-1 overflow-y-auto custom-scrollbar">
+             <div 
+               style={{ '--preview-zoom': `${previewZoom}%` } as React.CSSProperties}
+               className="preview-zoom-container flex-1 py-4 md:py-6 px-4 md:px-8 max-w-4xl mx-auto w-full"
+             >
+                <MarkdownPreview content={previewContent || content} previewMode="web" />
+             </div>
            </div>
         </div>
       </main>
