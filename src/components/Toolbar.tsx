@@ -121,7 +121,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           href="https://drive.google.com/file/d/1mmKCkFH2Z7ibO2CEw2jytJNegND_wmzz/view?usp=drive_link"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-violet-600 to-indigo-650 text-white rounded-xl text-[11px] font-extrabold hover:from-violet-700 hover:to-indigo-700 hover:scale-[1.02] active:scale-95 transition-all duration-200 cursor-pointer shadow-sm shadow-indigo-600/10 shrink-0 group"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-violet-600 to-indigo-650 text-violet rounded-xl text-[11px] font-extrabold hover:from-violet-700 hover:to-indigo-700 hover:scale-[1.02] active:scale-95 transition-all duration-200 cursor-pointer shadow-sm shadow-indigo-600/10 shrink-0 group"
           title="Tải & Cài đặt Extension Tiện ích Chụp ảnh công thức"
         >
           <Puzzle size={14} className="stroke-[2.5] group-hover:rotate-12 transition-transform duration-200" />
