@@ -1106,7 +1106,6 @@ export default function App() {
                 <Puzzle className="text-white group-hover:rotate-12 transition-transform duration-200" size={15} />
              </div>
              <div className="hidden sm:block text-left animate-pulse">
-                <p className="text-[8px] font-black text-violet-600 tracking-wider uppercase leading-none">Chụp ảnh Toán</p>
                 <p className="text-xs font-black text-violet-950 mt-1 leading-none">Cài Extension</p>
              </div>
            </a>
