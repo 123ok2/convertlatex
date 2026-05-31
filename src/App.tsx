@@ -1027,7 +1027,7 @@ export default function App() {
         </div>
       )}
 
-      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 flex items-center justify-between z-40 no-print flex-shrink-0">
+      <header className="h-20 bg-slate-100/95 backdrop-blur-md border-b border-slate-200 px-8 flex items-center justify-between z-40 no-print flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200">
             <Bot className="text-white" size={24} />
