@@ -1210,8 +1210,9 @@ export default function App() {
         fileInputRef={fileInputRef}
         onCopyFormatted={async () => {
           const previewEl = document.getElementById('markdown-preview-content');
-          if (previewEl && await deductCredit()) {
-             try {
+          if (!previewEl) return;
+          try {
+             if (await deductCredit()) {
                 const clone = previewEl.cloneNode(true) as HTMLElement;
                 
                 // 1. Dọn dẹp: Xóa phần KaTeX HTML thừa
@@ -1232,20 +1233,23 @@ export default function App() {
                   }
                 });
 
-                // 3. Xóa các class Tailwind để tránh Word bị rối (giữ cấu trúc trần)
-                const allElements = clone.querySelectorAll('*');
-                allElements.forEach(el => {
+                // 3. Xóa các class Tailwind hiệu năng cao bằng cách chỉ nhắm mục tiêu phần tử có class
+                clone.querySelectorAll('[class]').forEach(el => {
                     el.removeAttribute('class');
-                    // Word ưu tiên thuộc tính style trực tiếp
-                    if (el.tagName === 'TABLE') {
-                        (el as HTMLElement).style.borderCollapse = 'collapse';
-                        (el as HTMLElement).style.width = '100%';
-                        (el as HTMLElement).style.border = '1px solid black';
-                    }
-                    if (el.tagName === 'TD' || el.tagName === 'TH') {
-                        (el as HTMLElement).style.border = '1px solid black';
-                        (el as HTMLElement).style.padding = '5pt';
-                    }
+                });
+                
+                // Word ưu tiên thuộc tính style trực tiếp
+                clone.querySelectorAll('table').forEach(el => {
+                    const tableEl = el as HTMLElement;
+                    tableEl.style.borderCollapse = 'collapse';
+                    tableEl.style.width = '100%';
+                    tableEl.style.border = '1px solid black';
+                });
+                
+                clone.querySelectorAll('td, th').forEach(el => {
+                    const cellEl = el as HTMLElement;
+                    cellEl.style.border = '1px solid black';
+                    cellEl.style.padding = '5pt';
                 });
                 
                 const fullHtml = `
@@ -1286,70 +1290,102 @@ export default function App() {
                     ["text/plain"]: textBlob
                   })
                 ]);
-                setToast({ message: "✅ Đã sao chép định dạng tối ưu cho Word", type: 'success' });
-             } catch (err: any) {
-                console.error('Clipboard error:', err);
-                setToast({ message: "❌ Lỗi clipboard: Hãy click vào trang web trước khi nhấn Copy", type: 'error' });
+                setToast({ message: "✅ Đã sao chép định dạng tối ưu cho Word!", type: 'success' });
              }
+          } catch (err: any) {
+             console.error('Clipboard error:', err);
+             setToast({ message: "❌ Lỗi sao chép: Vui lòng tương tác với trang web trước khi nhấn Copy", type: 'error' });
           }
         }} 
-        onPrint={async () => { if (await deductCredit()) window.print(); }} 
+        onPrint={async () => { 
+          if (await deductCredit()) {
+             window.print(); 
+          }
+        }} 
         onExportWord={async () => {
           const previewEl = document.getElementById('markdown-preview-content');
-          if (previewEl && await deductCredit()) {
-             const clone = previewEl.cloneNode(true) as HTMLElement;
+          if (!previewEl) return;
+          try {
+             // 1. Thể hiện tiến trình chuẩn bị tải
+             setToast({ message: "⏳ Đang chuẩn bị tệp Word để tải xuống...", type: 'info' });
              
-             // 1. Dọn dẹp tương tự copy
-             clone.querySelectorAll('.katex-html').forEach(el => el.remove());
-             clone.querySelectorAll('.katex-mathml').forEach(el => {
-                const isBlock = el.closest('.katex-display') !== null;
-                const style = (el as HTMLElement).style;
-                style.display = isBlock ? 'block' : 'inline';
-                style.clip = 'auto';
-                style.height = 'auto';
-                style.width = 'auto';
-                style.overflow = 'visible';
-                if (isBlock) {
-                    style.textAlign = 'center';
-                    style.margin = '12pt 0';
-                }
-             });
+             if (await deductCredit()) {
+                // Đợi người dùng kịp đọc trạng thái chuẩn bị tệp và tạo cảm giác mượt mà
+                await new Promise(resolve => setTimeout(resolve, 250));
 
-             const allElements = clone.querySelectorAll('*');
-             allElements.forEach(el => {
-                 el.removeAttribute('class');
-                 if (el.tagName === 'TABLE') (el as HTMLElement).style.borderCollapse = 'collapse';
-             });
+                const clone = previewEl.cloneNode(true) as HTMLElement;
+                
+                // Dọn dẹp MathJax/KaTeX
+                clone.querySelectorAll('.katex-html').forEach(el => el.remove());
+                clone.querySelectorAll('.katex-mathml').forEach(el => {
+                   const isBlock = el.closest('.katex-display') !== null;
+                   const style = (el as HTMLElement).style;
+                   style.display = isBlock ? 'block' : 'inline';
+                   style.clip = 'auto';
+                   style.height = 'auto';
+                   style.width = 'auto';
+                   style.overflow = 'visible';
+                   if (isBlock) {
+                       style.textAlign = 'center';
+                       style.margin = '12pt 0';
+                   }
+                });
 
-             const fullHtml = `
-               <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-               <head>
-                 <meta charset='utf-8'>
-                 <!--[if gte mso 9]>
-                 <xml>
-                   <w:WordDocument>
-                     <w:View>Print</w:View>
-                   </w:WordDocument>
-                 </xml>
-                 <![endif]-->
-                 <style>
-                   body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; color: black; }
-                   table { border: 1px solid black; border-collapse: collapse; width: 100%; }
-                   th, td { border: 1px solid black; padding: 5pt; }
-                   h1, h2, h3 { color: #1e40af; font-weight: bold; }
-                 </style>
-               </head>
-               <body>
-                 ${clone.innerHTML}
-               </body>
-               </html>
-             `;
-             const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
-             const link = document.createElement('a');
-             link.href = URL.createObjectURL(blob);
-             link.download = `Document_${Date.now()}.doc`;
-             link.click();
-             setToast({ message: "📁 Đã xuất file Word thành công", type: 'success' });
+                // Xóa Tailwind classes
+                clone.querySelectorAll('[class]').forEach(el => {
+                    el.removeAttribute('class');
+                });
+                clone.querySelectorAll('table').forEach(el => {
+                    (el as HTMLElement).style.borderCollapse = 'collapse';
+                });
+
+                const fullHtml = `
+                  <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+                  <head>
+                    <meta charset='utf-8'>
+                    <!--[if gte mso 9]>
+                    <xml>
+                      <w:WordDocument>
+                        <w:View>Print</w:View>
+                      </w:WordDocument>
+                    </xml>
+                    <![endif]-->
+                    <style>
+                      body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; color: black; }
+                      table { border: 1px solid black; border-collapse: collapse; width: 100%; }
+                      th, td { border: 1px solid black; padding: 5pt; }
+                      h1, h2, h3 { color: #1e40af; font-weight: bold; }
+                    </style>
+                  </head>
+                  <body>
+                    ${clone.innerHTML}
+                  </body>
+                  </html>
+                `;
+
+                // Bắt đầu lưu trữ tệp tin tải xuống trong hệ thống trình duyệt
+                setToast({ message: "💾 Trình duyệt đang tiếp nhận tệp tin và chuẩn bị lưu xuống máy tính...", type: 'info' });
+                await new Promise(resolve => setTimeout(resolve, 350));
+
+                const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
+                const url = URL.createObjectURL(blob);
+                
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `Document_${Date.now()}.doc`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                // Cho trình duyệt thời gian đẩy tệp thực sự lên đĩa/hiển thị thanh công cụ tải xuống
+                setTimeout(() => {
+                   URL.revokeObjectURL(url);
+                   setToast({ message: "📁 Đã hoàn tất kết xuất và lưu file Word thành công vào máy tính!", type: 'success' });
+                }, 1600);
+             }
+          } catch (error) {
+             console.error('Export Word error:', error);
+             setToast({ message: "❌ Gặp lỗi trong quá trình kết xuất Word", type: 'error' });
           }
         }} 
         onClear={() => {
