@@ -125,7 +125,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           title="Tải & Cài đặt Extension Tiện ích Chụp ảnh công thức"
         >
           <Puzzle size={14} className="stroke-[2.5] group-hover:rotate-12 transition-transform duration-200" />
-          <span>Tải Extension</span>
+          <span> Cài Extension</span>
         </a>
 
         <div className="h-4 w-[1px] bg-slate-200/80 hidden sm:block"></div>
