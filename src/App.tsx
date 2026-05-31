@@ -1234,9 +1234,7 @@ export default function App() {
                 });
 
                 // 3. Xóa các class Tailwind hiệu năng cao bằng cách chỉ nhắm mục tiêu phần tử có class
-                clone.querySelectorAll('[class]').forEach(el => {
-                    el.removeAttribute('class');
-                });
+             
                 
                 // Word ưu tiên thuộc tính style trực tiếp
                 clone.querySelectorAll('table').forEach(el => {
@@ -1332,12 +1330,7 @@ export default function App() {
                 });
 
                 // Xóa Tailwind classes
-                clone.querySelectorAll('[class]').forEach(el => {
-                    el.removeAttribute('class');
-                });
-                clone.querySelectorAll('table').forEach(el => {
-                    (el as HTMLElement).style.borderCollapse = 'collapse';
-                });
+              
 
                 const fullHtml = `
                   <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
