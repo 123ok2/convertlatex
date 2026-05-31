@@ -1303,94 +1303,110 @@ export default function App() {
           }
         }} 
         onExportWord={async () => {
-        onExportWord={async () => {
   const previewEl = document.getElementById('markdown-preview-content');
   if (!previewEl) return;
   try {
-     // 1. Thông báo bắt đầu xử lý
+     // 1. Thông báo bắt đầu xử lý trực quan
      setToast({ message: "⏳ Đang chuẩn bị tệp Word để tải xuống...", type: 'info' });
      
-     // 2. Trừ điểm credit (nếu có)
-     if (await deductCredit()) {
-        const clone = previewEl.cloneNode(true) as HTMLElement;
-        
-        // 3. Tối ưu dọn dẹp MathJax/KaTeX
-        clone.querySelectorAll('.katex-html').forEach(el => el.remove());
-        clone.querySelectorAll('.katex-mathml').forEach(el => {
-           const isBlock = el.closest('.katex-display') !== null;
-           const style = (el as HTMLElement).style;
-           style.display = isBlock ? 'block' : 'inline';
-           style.clip = 'auto';
-           style.height = 'auto';
-           style.width = 'auto';
-           style.overflow = 'visible';
-           if (isBlock) {
-               style.textAlign = 'center';
-               style.margin = '12pt 0';
-           }
-        });
-
-        // 4. Xóa Tailwind classes và định dạng bảng trực tiếp
-        // Thay vì chạy nhiều vòng lặp forEach riêng lẻ gây chậm, gộp chung xử lý DOM
-        clone.querySelectorAll('*').forEach(el => {
-            const htmlEl = el as HTMLElement;
-            // Xóa class của Tailwind để file Word sạch gọn
-            if (htmlEl.hasAttribute('class')) {
-                htmlEl.removeAttribute('class');
-            }
-            // Nếu là bảng, tự động định dạng luôn layout chuẩn Word
-            if (htmlEl.tagName === 'TABLE') {
-                htmlEl.style.borderCollapse = 'collapse';
-                htmlEl.style.width = '100%';
-                htmlEl.style.border = '1px solid black';
-            }
-            if (htmlEl.tagName === 'TD' || htmlEl.tagName === 'TH') {
-                htmlEl.style.border = '1px solid black';
-                htmlEl.style.padding = '5pt';
-            }
-        });
-
-        // 5. Tạo cấu trúc file HTML chuẩn Word (Bổ sung thiết lập trang Print chuẩn Office)
-        const fullHtml = `
-          <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-          <head>
-            <meta charset='utf-8'>
-            <style>
-              body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; color: black; }
-              table { border: 1px solid black; border-collapse: collapse; width: 100%; margin-bottom: 15pt; }
-              th, td { border: 1px solid black; padding: 5pt; }
-              h1, h2, h3 { color: #1e40af; font-weight: bold; }
-              h1 { font-size: 18pt; }
-              h2 { font-size: 16pt; }
-              h3 { font-size: 14pt; }
-              p { margin-bottom: 10pt; }
-            </style>
-          </head>
-          <body>
-            ${clone.innerHTML}
-          </body>
-          </html>
-        `;
-
-        // 6. Kích hoạt tải xuống tức thì (Xóa bỏ hoàn toàn các cấu trúc delay 250ms/350ms)
-        const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
-        const url = URL.createObjectURL(blob);
-        
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `Document_${Date.now()}.doc`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        // Hiển thị thông báo thành công ngay lập tức
-        setToast({ message: "📁 Đã hoàn tất kết xuất và lưu file Word thành công vào máy tính!", type: 'success' });
-        
-        // Chỉ thu hồi URL sau một khoảng thời gian ngắn chạy ngầm để tránh rác bộ nhớ
-        setTimeout(() => {
-           URL.revokeObjectURL(url);
-        }, 100);
+     // 2. KIỂM TRA LƯỢT CỤC BỘ (Chạy ngay lập tức, không đợi kết nối mạng)
+     if (!user || credits === null) return;
+     if (credits <= 0) {
+       setShowCreditAlert(true);
+       return;
      }
+
+     // 3. TRỪ ĐIỂM NGẦM (UI cập nhật ngay, lệnh Firebase đẩy đi chạy ngầm không chặn code)
+     setCredits(prev => (prev !== null ? prev - 1 : 0));
+     
+     const collectionName = user.isGuest ? "guests" : "users";
+     const userRef = doc(db, collectionName, user.uid);
+     // Không dùng 'await' ở đây để giải phóng luồng xử lý file ngay lập tức
+     updateDoc(userRef, { credits: increment(-1) }).catch(err => {
+        console.error("Lỗi cập nhật credit chạy ngầm:", err);
+     });
+
+     // 4. TIẾN HÀNH XỬ LÝ FILE NGAY LẬP TỨC
+     const clone = previewEl.cloneNode(true) as HTMLElement;
+     
+     // Khử phần hiển thị HTML dư thừa của KaTeX
+     clone.querySelectorAll('.katex-html').forEach(el => el.remove());
+     
+     // Tối ưu định dạng MathML hiển thị trên Word
+     clone.querySelectorAll('.katex-mathml').forEach(el => {
+        const isBlock = el.closest('.katex-display') !== null;
+        const style = (el as HTMLElement).style;
+        style.display = isBlock ? 'block' : 'inline';
+        style.clip = 'auto';
+        style.height = 'auto';
+        style.width = 'auto';
+        style.overflow = 'visible';
+        if (isBlock) {
+            style.textAlign = 'center';
+            style.margin = '12pt 0';
+        }
+     });
+
+     // CHỈ nhắm mục tiêu phần tử có class để xóa (Bỏ qua hàng ngàn thẻ MathML con)
+     clone.querySelectorAll('[class]').forEach(el => {
+         el.removeAttribute('class');
+     });
+
+     // Định dạng bảng (table) chuẩn khung viền Word trực tiếp bằng Selector mục tiêu
+     clone.querySelectorAll('table').forEach(el => {
+         const tableEl = el as HTMLElement;
+         tableEl.style.borderCollapse = 'collapse';
+         tableEl.style.width = '100%';
+         tableEl.style.border = '1px solid black';
+         tableEl.style.marginBottom = '15pt';
+     });
+     
+     clone.querySelectorAll('th, td').forEach(el => {
+         const cellEl = el as HTMLElement;
+         cellEl.style.border = '1px solid black';
+         cellEl.style.padding = '5pt';
+     });
+
+     // Cấu trúc khung trang Print Layout cho Word
+     const fullHtml = `
+       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+       <head>
+         <meta charset='utf-8'>
+         <style>
+           body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; color: black; }
+           table { border: 1px solid black; border-collapse: collapse; width: 100%; margin-bottom: 15pt; }
+           th, td { border: 1px solid black; padding: 5pt; }
+           h1, h2, h3 { color: #1e40af; font-weight: bold; }
+           h1 { font-size: 18pt; }
+           h2 { font-size: 16pt; }
+           h3 { font-size: 14pt; }
+           p { margin-bottom: 10pt; }
+         </style>
+       </head>
+       <body>
+         ${clone.innerHTML}
+       </body>
+       </html>
+     `;
+
+     // 5. KÍCH HOẠT TẢI FILE TỨC THÌ
+     const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
+     const url = URL.createObjectURL(blob);
+     
+     const link = document.createElement('a');
+     link.href = url;
+     link.download = `Document_${Date.now()}.doc`;
+     document.body.appendChild(link);
+     link.click();
+     document.body.removeChild(link);
+     
+     // Báo thành công luôn không cần chờ đợi thêm
+     setToast({ message: "📁 Đã hoàn tất kết xuất và lưu file Word thành công!", type: 'success' });
+     
+     setTimeout(() => {
+        URL.revokeObjectURL(url);
+     }, 100);
+     
   } catch (error) {
      console.error('Export Word error:', error);
      setToast({ message: "❌ Gặp lỗi trong quá trình kết xuất Word", type: 'error' });
