@@ -861,24 +861,28 @@ export default function App() {
 
   if (!user) return (
     <div className="h-screen bg-slate-100 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-white">
-        <div className="bg-indigo-600 p-10 text-center relative overflow-hidden">
-          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
-          <Bot className="w-16 h-16 text-white mx-auto mb-4 relative z-10" />
-          <h1 className="text-2xl font-extrabold text-white mb-1 relative z-10">LLM Markdown Pro</h1>
-          <p className="text-indigo-100 text-sm opacity-80 relative z-10">
+      <div className="max-w-[360px] w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200/50">
+        <div className="bg-slate-50/80 px-6 py-5 text-center border-b border-slate-100 relative">
+          <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-center mx-auto mb-2 shadow-2xs">
+            <Bot className="w-5 h-5 text-indigo-600" />
+          </div>
+          <h1 className="text-base font-extrabold text-slate-900 tracking-tight">LLM Markdown Pro</h1>
+          <p className="text-[10px] text-slate-500 font-medium mt-1">
             {isRegistering ? "Đăng ký tài khoản nhận ngay 20 Credits" : "Mỗi thiết bị nhận 20 Credits khi đăng ký"}
           </p>
         </div>
-        <div className="p-10 pb-6">
-          <form onSubmit={handleEmailAuth} className="space-y-4">
+        <div className="p-6">
+          <form onSubmit={handleEmailAuth} className="space-y-3">
             <div>
               <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <Mail size={14} />
+                </span>
                 <input 
                   type="email" 
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)} 
-                  className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all outline-none" 
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 focus:bg-white transition-all outline-none" 
                   placeholder={isRegistering ? "Nhập Email đăng ký" : "Email"} 
                   required 
                 />
@@ -886,31 +890,34 @@ export default function App() {
             </div>
             
             <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <Lock size={14} />
+              </span>
               <input 
                 type={showPassword ? "text" : "password"} 
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
-                className="w-full pl-5 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all outline-none" 
+                className="w-full pl-9 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 focus:bg-white transition-all outline-none" 
                 placeholder="Mật khẩu" 
                 required 
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none focus:text-indigo-600 transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none transition-colors"
                 title={showPassword ? "Ẩn mật khẩu" : "Hiển thị mật khẩu"}
               >
-                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
               </button>
             </div>
 
-            <Button type="submit" disabled={isLoginLoading} className="w-full py-4 text-base font-bold rounded-xl shadow-indigo-200 shadow-xl">
-              {isLoginLoading ? <Loader2 className="animate-spin" /> : (isRegistering ? 'Đăng ký tài khoản thủ công' : 'Đăng nhập')}
+            <Button type="submit" disabled={isLoginLoading} className="w-full py-2 px-4 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs">
+              {isLoginLoading ? <Loader2 className="animate-spin h-3.5 w-3.5 mx-auto" /> : (isRegistering ? 'Đăng ký tài khoản thủ công' : 'Đăng nhập')}
             </Button>
 
-            <div className="flex items-center gap-3 my-3">
+            <div className="flex items-center gap-2.5 py-1">
               <div className="flex-1 h-px bg-slate-100"></div>
-              <span className="text-[10px] text-slate-300 uppercase font-bold tracking-widest">Hoặc</span>
+              <span className="text-[9px] text-slate-400 uppercase font-bold tracking-widest">Hoặc</span>
               <div className="flex-1 h-px bg-slate-100"></div>
             </div>
 
@@ -918,9 +925,9 @@ export default function App() {
               type="button"
               onClick={handleGoogleLogin} 
               disabled={isLoginLoading}
-              className="w-full py-3.5 px-5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl shadow-sm text-sm font-bold text-slate-700 hover:text-slate-800 hover:bg-slate-50 active:scale-98 transition-all flex items-center justify-center gap-2"
+              className="w-full py-2 px-4 bg-white border border-slate-200 hover:border-slate-300 rounded-lg shadow-2xs text-[11px] font-bold text-slate-700 hover:text-slate-800 hover:bg-slate-50 active:scale-98 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <span className="font-extrabold text-base select-none">
+              <span className="font-extrabold text-[13px] select-none">
                 <span className="text-[#4285F4]">G</span>
                 <span className="text-[#EA4335]">o</span>
                 <span className="text-[#FBBC05]">o</span>
@@ -928,63 +935,62 @@ export default function App() {
                 <span className="text-[#34A853]">l</span>
                 <span className="text-[#EA4335]">e</span>
               </span>
-              <span>Đăng nhập / Đăng ký bằng Google</span>
+              <span>Đăng nhập qua Google</span>
             </button>
 
             {unauthorizedDomainError && (
-              <div className="mt-3 p-4 bg-red-50 border border-red-200/60 rounded-xl text-left text-xs text-red-800 space-y-2.5 animate-in fade-in duration-300">
+              <div className="mt-2.5 p-3 bg-red-50/65 border border-red-200/50 rounded-lg text-left text-[11px] text-red-800 space-y-2 animate-in fade-in duration-300">
                 <div className="font-bold flex items-center gap-1.5 text-red-700">
-                  <span className="w-2 h-2 rounded-full bg-red-600 animate-ping"></span>
-                  Lỗi: Tên miền chưa được xác thực (unauthorized-domain)!
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-650 animate-ping"></span>
+                  Lỗi: Tên miền chưa xác thực!
                 </div>
-                <p className="leading-relaxed">
-                  Firebase yêu cầu bạn thêm tên miền hiện tại vào danh sách ủy quyền 
-                  (Authorized domains) trong cài đặt Firebase Authentication để dùng tính năng Đăng nhập bằng Google.
+                <p className="leading-relaxed opacity-90 text-[10px]">
+                  Vui lòng thêm tên miền hiện tại vào danh sách Authorized domains trong cấu hình Authentication của Firebase Console.
                 </p>
-                <div className="bg-white p-2 border border-red-100 rounded-lg flex items-center justify-between gap-2 shadow-sm">
-                  <code className="text-red-600 font-mono select-all font-semibold overflow-x-auto truncate text-[11px] block pr-1">{unauthorizedDomainError}</code>
+                <div className="bg-white p-1.5 border border-red-100 rounded-md flex items-center justify-between gap-1.5 shadow-3xs">
+                  <code className="text-red-600 font-mono select-all font-semibold overflow-x-auto truncate text-[10px] block max-w-[180px]">{unauthorizedDomainError}</code>
                   <button
                     type="button"
                     onClick={() => {
                       navigator.clipboard.writeText(unauthorizedDomainError);
-                      setToast({ message: "Đã sao chép tên miền vào Clipboard!", type: 'success' });
+                      setToast({ message: "Đã sao chép tên miền!", type: 'success' });
                     }}
-                    className="shrink-0 bg-slate-100 hover:bg-slate-200 text-[10px] font-extrabold px-2.5 py-1.5 rounded-md text-slate-700 active:scale-95 transition-all"
+                    className="shrink-0 bg-slate-100 hover:bg-slate-200 text-[9px] font-extrabold px-2 py-1 rounded text-slate-700 active:scale-95 transition-all"
                   >
                     Sao chép
                   </button>
                 </div>
-                <div className="pt-1 flex flex-wrap gap-2 text-[11px]">
+                <div className="pt-0.5 flex gap-1.5 text-[9px]">
                   <a 
                     href="https://console.firebase.google.com/project/okoko-807c1/authentication/providers"
                     target="_blank" 
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center font-bold px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors shadow-sm"
+                    className="inline-flex items-center justify-center font-bold px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded transition-colors shadow-sm"
                   >
-                    ⚙️ Mở Firebase Console →
+                    ⚙️ Firebase Console →
                   </a>
                   <button
                     type="button"
                     onClick={() => setUnauthorizedDomainError(null)}
-                    className="inline-flex items-center justify-center font-semibold px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition-colors"
+                    className="inline-flex items-center justify-center font-semibold px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded transition-colors"
                   >
-                    Đóng thông báo
+                    Đóng
                   </button>
                 </div>
               </div>
             )}
           </form>
-          <div className="mt-8 flex flex-col items-center gap-4">
-            <button onClick={() => { setIsRegistering(!isRegistering); setEmail(''); setPassword(''); }} className="text-sm font-semibold text-indigo-600 hover:text-indigo-700">
+          <div className="mt-5 flex flex-col items-center gap-3">
+            <button onClick={() => { setIsRegistering(!isRegistering); setEmail(''); setPassword(''); }} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer">
               {isRegistering ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký ngay'}
             </button>
-            <div className="w-full flex items-center gap-3">
+            <div className="w-full flex items-center gap-2">
               <div className="flex-1 h-px bg-slate-100"></div>
-              <span className="text-[10px] text-slate-300 uppercase font-bold tracking-widest">Dùng thử nhanh</span>
+              <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider">Dùng thử nhanh</span>
               <div className="flex-1 h-px bg-slate-100"></div>
             </div>
-            <button onClick={handleGuestLogin} className="text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors flex items-center gap-2 group">
-              <Monitor size={14} className="group-hover:scale-110 transition-transform" /> 
+            <button onClick={handleGuestLogin} className="text-xs font-bold text-slate-500 hover:text-indigo-600 transition-colors flex items-center gap-1.5 group cursor-pointer">
+              <Monitor size={12} className="group-hover:scale-110 transition-transform text-slate-400 group-hover:text-indigo-500" /> 
               Vào nhanh bằng ID Thiết bị (10 Credit)
             </button>
           </div>
@@ -995,6 +1001,59 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 overflow-hidden select-none">
+      {/* Thanh Header Bản Quyền & Liên Hệ */}
+      <div className="bg-slate-950 text-slate-300 text-[11px] px-8 py-1.5 flex items-center justify-between no-print z-50 select-none border-b border-slate-900 shrink-0">
+        <style>{`
+          @keyframes glow-author {
+            0%, 100% {
+              text-shadow: 0 0 4px rgba(99, 102, 241, 0.8), 0 0 12px rgba(99, 102, 241, 0.4);
+              color: #ffffff;
+            }
+            50% {
+              text-shadow: 0 0 1px rgba(99, 102, 241, 0.1);
+              color: #cbd5e1;
+            }
+          }
+          @keyframes glow-zalo {
+            0%, 100% {
+              box-shadow: 0 0 8px rgba(14, 165, 233, 0.4), inset 0 0 3px rgba(14, 165, 233, 0.2);
+              border-color: rgba(56, 189, 248, 0.6);
+              background-color: rgba(15, 23, 42, 0.85);
+            }
+            50% {
+              box-shadow: 0 0 2px rgba(14, 165, 233, 0.1), inset 0 0 1px rgba(14, 165, 233, 0.05);
+              border-color: rgba(56, 189, 248, 0.2);
+              background-color: rgba(15, 23, 42, 0.4);
+            }
+          }
+          .animate-glow-author {
+            animation: glow-author 2.5s ease-in-out infinite;
+          }
+          .animate-glow-zalo {
+            animation: glow-zalo 3s ease-in-out infinite;
+          }
+        `}</style>
+        <div className="flex items-center gap-2 font-medium">
+          <span className="text-indigo-400 animate-pulse">©</span>
+          <span>Bản quyền thuộc về tác giả: <strong className="font-extrabold ml-1 tracking-wide animate-glow-author">Duy Hạnh</strong></span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-slate-800">|</span>
+          <a 
+            href="https://zalo.me/0868640898" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="flex items-center gap-1.5 transition-all duration-300 text-[11px] border px-2.5 py-1 rounded-lg animate-glow-zalo hover:scale-[1.02] cursor-pointer"
+          >
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-sky-400"></span>
+            </span>
+            <span>Zalo hỗ trợ: <strong className="text-sky-300 font-extrabold ml-0.5 tracking-wide">0868.640.898</strong></span>
+          </a>
+        </div>
+      </div>
+
       {toast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 duration-300">
           <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl shadow-2xl border ${
@@ -1026,46 +1085,46 @@ export default function App() {
 
         <div className="flex items-center gap-4">
           {/* Thống kê công khai và tự động cập nhật trực tiếp trên thanh công cụ */}
-          <div className="hidden lg:flex items-center gap-3 bg-slate-50 border border-slate-200/70 rounded-2xl p-1.5 pr-3 shadow-xs font-sans text-xs shrink-0 select-none">
+          <div className="hidden lg:flex items-center gap-2 bg-slate-100/60 border border-slate-200/50 rounded-2xl p-1 shrink-0 select-none shadow-2xs font-sans">
             {/* Truy cập hôm nay */}
-            <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-xl border border-slate-100 shadow-2xs">
+            <div className="flex items-center gap-2 py-1 px-2.5 bg-white rounded-xl border border-slate-200/40 shadow-3xs hover:bg-slate-50/50 transition-colors">
               <span className="text-sm select-none">📅</span>
               <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Hôm nay</p>
-                <p className="font-extrabold text-slate-900 mt-0.5 leading-none">
+                <p className="text-[8px] font-extrabold text-slate-400 hover:text-indigo-500 uppercase tracking-widest leading-none">Hôm nay</p>
+                <p className="font-extrabold text-slate-900 mt-1 leading-none text-[11px]">
                   {(stats.daily?.[new Date().toISOString().slice(0, 10)] || 0).toLocaleString('vi-VN')}
                 </p>
               </div>
             </div>
 
             {/* Tổng truy cập */}
-            <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-xl border border-slate-100 shadow-2xs">
+            <div className="flex items-center gap-2 py-1 px-2.5 bg-white rounded-xl border border-slate-200/40 shadow-3xs hover:bg-slate-50/50 transition-colors">
               <span className="text-sm select-none">🌍</span>
               <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Tổng truy cập</p>
-                <p className="font-extrabold text-slate-900 mt-0.5 leading-none">
+                <p className="text-[8px] font-extrabold text-slate-400 hover:text-emerald-500 uppercase tracking-widest leading-none">Tổng truy cập</p>
+                <p className="font-extrabold text-sky-600 mt-1 leading-none text-[11px]">
                   {((stats.total || 0) + 100000).toLocaleString('vi-VN')}
                 </p>
               </div>
             </div>
 
             {/* Thành viên */}
-            <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-xl border border-slate-100 shadow-2xs">
+            <div className="flex items-center gap-2 py-1 px-2.5 bg-white rounded-xl border border-slate-200/40 shadow-3xs hover:bg-slate-50/50 transition-colors">
               <span className="text-sm select-none">👤</span>
               <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Thành viên</p>
-                <p className="font-extrabold text-slate-900 mt-0.5 leading-none">
+                <p className="text-[8px] font-extrabold text-slate-400 hover:text-blue-500 uppercase tracking-widest leading-none">Thành viên</p>
+                <p className="font-extrabold text-indigo-600 mt-1 leading-none text-[11px]">
                   {registeredAccountsCount !== null ? (registeredAccountsCount + 10000).toLocaleString('vi-VN') : "..."}
                 </p>
               </div>
             </div>
 
             {/* Khách ẩn danh */}
-            <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-xl border border-slate-100 shadow-2xs">
+            <div className="flex items-center gap-2 py-1 px-2.5 bg-white rounded-xl border border-slate-200/40 shadow-3xs hover:bg-slate-50/50 transition-colors">
               <span className="text-sm select-none">🕵️</span>
               <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Khách</p>
-                <p className="font-extrabold text-slate-900 mt-0.5 leading-none">
+                <p className="text-[8px] font-extrabold text-slate-400 hover:text-amber-500 uppercase tracking-widest leading-none">Khách</p>
+                <p className="font-extrabold text-amber-600 mt-1 leading-none text-[11px]">
                   {anonymousAccountsCount !== null ? anonymousAccountsCount.toLocaleString('vi-VN') : "..."}
                 </p>
               </div>
@@ -1073,36 +1132,36 @@ export default function App() {
           </div>
 
           {/* Thống kê rút gọn trên thiết bị di động */}
-          <div className="flex lg:hidden items-center gap-2 bg-slate-50 border border-slate-200/50 rounded-xl px-2.5 py-1.5 shadow-xs text-[10px] select-none font-sans">
-            <span className="font-extrabold text-slate-700 flex items-center gap-1">
+          <div className="flex lg:hidden items-center gap-2 bg-slate-100/60 border border-slate-200/50 rounded-xl px-2.5 py-1.5 shadow-3xs text-[10px] select-none font-sans font-semibold">
+            <span className="text-[#0ea5e9] flex items-center gap-1">
               <span>🌍</span> {((stats.total || 0) + 100000).toLocaleString('vi-VN')}
             </span>
             <span className="text-slate-300">|</span>
-            <span className="font-extrabold text-indigo-600 flex items-center gap-1">
+            <span className="text-indigo-600 flex items-center gap-1">
               <span>👤</span> {registeredAccountsCount !== null ? (registeredAccountsCount + 10000).toLocaleString('vi-VN') : "..."}
             </span>
             <span className="text-slate-300">|</span>
-            <span className="font-extrabold text-amber-600 flex items-center gap-1">
+            <span className="text-amber-600 flex items-center gap-1">
               <span>🕵️</span> {anonymousAccountsCount !== null ? anonymousAccountsCount.toLocaleString('vi-VN') : "..."}
             </span>
           </div>
 
-           <div className="flex items-center gap-3 px-5 py-2.5 bg-yellow-50 text-yellow-700 border border-yellow-100 rounded-2xl shadow-sm">
-             <div className="w-8 h-8 bg-yellow-400 rounded-xl flex items-center justify-center shadow-sm">
-                <Zap className="text-white" size={16} fill="white" />
+           <div className="flex items-center gap-3 px-4 py-1.5 bg-gradient-to-r from-amber-50 to-amber-100/30 text-amber-800 border border-amber-200 hover:border-amber-300 rounded-xl shadow-2xs transition-colors duration-200 select-none">
+             <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-500 rounded-lg flex items-center justify-center shadow-xs">
+                <Zap className="text-white" size={15} fill="white" />
              </div>
              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Số dư</p>
-                <p className="text-lg font-black leading-none">{credits ?? 0} Credits</p>
+                <p className="text-[8px] font-black text-amber-600 tracking-wider uppercase leading-none">Số dư</p>
+                <p className="text-sm font-black text-amber-950 mt-1 leading-none">{credits ?? 0} Credits</p>
              </div>
            </div>
 
            <div className="relative" onClick={(e) => e.stopPropagation()}>
-             <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 hover:bg-white transition-all">
-               <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-md ${user.isGuest ? 'bg-orange-500' : 'bg-indigo-600'}`}>
-                 {user.isGuest ? <Monitor size={20} /> : (user.email?.[0].toUpperCase() || 'U')}
+             <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 hover:bg-white transition-all shadow-3xs cursor-pointer">
+               <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white shadow-xs transition-all duration-200 ${user.isGuest ? 'bg-gradient-to-br from-orange-400 to-orange-500' : 'bg-gradient-to-br from-indigo-550 to-indigo-600'}`}>
+                 {user.isGuest ? <Monitor size={16} /> : (user.email?.[0].toUpperCase() || 'U')}
                </div>
-               <ChevronDown size={16} className={`text-slate-400 mr-2 transition-transform duration-200 ${showProfileMenu ? 'rotate-180' : ''}`} />
+               <ChevronDown size={14} className={`text-slate-400 mr-1 transition-transform duration-200 ${showProfileMenu ? 'rotate-180' : ''}`} />
              </button>
              
              {showProfileMenu && (
@@ -1293,8 +1352,11 @@ export default function App() {
              setToast({ message: "📁 Đã xuất file Word thành công", type: 'success' });
           }
         }} 
-        onClear={() => { if (confirm('Xóa toàn bộ nội dung?')) setContent(''); }}
-        onOptimize={handleOfflineEnhance}
+        onClear={() => {
+          setContent('');
+          setPreviewContent('');
+        }}
+        
       />
 
       <main className="flex-1 flex overflow-hidden">
@@ -1327,33 +1389,32 @@ export default function App() {
            <div className="flex-1 py-4 md:py-6 px-4 md:px-8 max-w-4xl mx-auto w-full">
               {/* Tùy chỉnh chế độ xem trước */}
               <div className="flex justify-between items-center pb-3 border-b border-slate-100 mb-4 select-none no-print">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${previewMode === 'word' ? 'bg-indigo-400' : 'bg-emerald-400'}`}></span>
-                      <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${previewMode === 'word' ? 'bg-indigo-500' : 'bg-emerald-500'}`}></span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5`}>
+                    <span className={previewMode === 'word' ? 'text-indigo-500' : 'text-emerald-500'}>●</span>
+                    <span className="text-slate-500 font-extrabold">
+                      XEM TRƯỚC: {previewMode === 'word' ? 'CHUẨN WORD' : 'CHUẨN WEB'}
                     </span>
-                    Xem trước: {previewMode === 'word' ? 'Chuẩn Word' : 'Chuẩn Web'}
                   </span>
                 </div>
-                <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                <div className="flex bg-slate-100/50 p-1 rounded-xl border border-slate-200/80">
                   <button
                     type="button"
                     onClick={() => setPreviewMode('web')}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1 ${
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                       previewMode === 'web' 
-                        ? 'bg-white text-slate-800 shadow-sm' 
+                        ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' 
                         : 'text-slate-500 hover:text-slate-800'
                     }`}
                   >
-                    🎨 Bản Web
+                    🤪 Bản Web
                   </button>
                   <button
                     type="button"
                     onClick={() => setPreviewMode('word')}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1 ${
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                       previewMode === 'word' 
-                        ? 'bg-white text-indigo-700 shadow-sm font-black' 
+                        ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/50' 
                         : 'text-slate-500 hover:text-indigo-600'
                     }`}
                   >
