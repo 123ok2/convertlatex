@@ -1,11 +1,1 @@
 @import "tailwindcss";
-
-math-field {
-  color: #0d1117 !important;
-  --caret-color: #4f46e5;
-  background-color: transparent;
-}
-
-math-field::part(virtual-keyboard-toggle) {
-  display: none !important;
-}

@@ -1,6 +1,6 @@
 {
-  "name": "Convert LaTeX",
-  "description": "Một ứng dụng chuyên dụng để xem, chỉnh sửa và hiển thị nội dung Markdown được tạo bởi các mô hình ngôn ngữ lớn như Gemini, ChatGPT, Claude.",
+  "name": "LaTeX Math Editor & Docx Exporter",
+  "description": "An interactive markdown and LaTeX editor with handwritten formula recognition, online MathType, and export to MS Word (.docx) support.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

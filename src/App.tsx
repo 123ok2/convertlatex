@@ -3,7 +3,6 @@ import { MarkdownPreview } from './components/MarkdownPreview';
 import { Button } from './components/Button';
 import { DrawingModal } from './components/DrawingModal';
 import { Toolbar } from './components/Toolbar';
-import { GoogleGenAI } from "@google/genai";
 import { auth, db } from './firebase';
 import { 
   onAuthStateChanged, 
@@ -50,7 +49,8 @@ import {
   Users,
   RefreshCw,
   Eye,
-  EyeOff
+  EyeOff,
+  Puzzle
 } from 'lucide-react';
 
 /**
@@ -270,12 +270,12 @@ export default function App() {
   const [content, setContent] = useState<string>('');
   const [previewContent, setPreviewContent] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
-  const [previewMode, setPreviewMode] = useState<'web' | 'word'>('web');
   const [isAiProcessing, setIsAiProcessing] = useState<boolean>(false);
   const [isDeducting, setIsDeducting] = useState(false);
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'info' | 'error'} | null>(null);
+  const [wordExportState, setWordExportState] = useState<'idle' | 'preparing' | 'packaging' | 'success'>('idle');
 
   const [stats, setStats] = useState<any>({
     daily: {},
@@ -820,24 +820,26 @@ export default function App() {
       setIsAiProcessing(true);
       try {
         if (await deductCredit()) {
-          const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
           const base64Data = data.split(',')[1];
           
-          const imagePart = {
-            inlineData: {
-              mimeType: 'image/png',
-              data: base64Data
-            }
-          };
-          const textPart = {
-            text: "Convert this handwritten math/physics/chemistry formula to LaTeX. Return ONLY the LaTeX string without any markdown formatting or dollar signs."
-          };
-          const result = await genAI.models.generateContent({
-            model: "gemini-3.5-flash",
-            contents: { parts: [imagePart, textPart] }
+          const response = await fetch('/api/gemini', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              image: base64Data,
+              prompt: "Convert this handwritten math/physics/chemistry formula to LaTeX. Return ONLY the LaTeX string without any markdown formatting or dollar signs."
+            }),
           });
-          
-          const text = result.text;
+
+          if (!response.ok) {
+            throw new Error(`Server returned error: ${response.status}`);
+          }
+
+          const responseData = await response.json();
+          const text = responseData.text;
+
           if (text) {
             insertTextAtCursor(`\n$$ ${text.trim()} $$\n`);
             setToast({ message: "✨ Đã nhận diện công thức", type: 'success' });
@@ -1001,58 +1003,6 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 overflow-hidden select-none">
-      {/* Thanh Header Bản Quyền & Liên Hệ */}
-      <div className="bg-slate-950 text-slate-300 text-[11px] px-8 py-1.5 flex items-center justify-between no-print z-50 select-none border-b border-slate-900 shrink-0">
-        <style>{`
-          @keyframes glow-author {
-            0%, 100% {
-              text-shadow: 0 0 4px rgba(99, 102, 241, 0.8), 0 0 12px rgba(99, 102, 241, 0.4);
-              color: #ffffff;
-            }
-            50% {
-              text-shadow: 0 0 1px rgba(99, 102, 241, 0.1);
-              color: #cbd5e1;
-            }
-          }
-          @keyframes glow-zalo {
-            0%, 100% {
-              box-shadow: 0 0 8px rgba(14, 165, 233, 0.4), inset 0 0 3px rgba(14, 165, 233, 0.2);
-              border-color: rgba(56, 189, 248, 0.6);
-              background-color: rgba(15, 23, 42, 0.85);
-            }
-            50% {
-              box-shadow: 0 0 2px rgba(14, 165, 233, 0.1), inset 0 0 1px rgba(14, 165, 233, 0.05);
-              border-color: rgba(56, 189, 248, 0.2);
-              background-color: rgba(15, 23, 42, 0.4);
-            }
-          }
-          .animate-glow-author {
-            animation: glow-author 2.5s ease-in-out infinite;
-          }
-          .animate-glow-zalo {
-            animation: glow-zalo 3s ease-in-out infinite;
-          }
-        `}</style>
-        <div className="flex items-center gap-2 font-medium">
-          <span className="text-indigo-400 animate-pulse">©</span>
-          <span>Bản quyền thuộc về tác giả: <strong className="font-extrabold ml-1 tracking-wide animate-glow-author">Duy Hạnh</strong></span>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-slate-800">|</span>
-          <a 
-            href="https://zalo.me/0868640898" 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            className="flex items-center gap-1.5 transition-all duration-300 text-[11px] border px-2.5 py-1 rounded-lg animate-glow-zalo hover:scale-[1.02] cursor-pointer"
-          >
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-sky-400"></span>
-            </span>
-            <span>Zalo hỗ trợ: <strong className="text-sky-300 font-extrabold ml-0.5 tracking-wide">0868.640.898</strong></span>
-          </a>
-        </div>
-      </div>
 
       {toast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 duration-300">
@@ -1145,6 +1095,21 @@ export default function App() {
               <span>🕵️</span> {anonymousAccountsCount !== null ? anonymousAccountsCount.toLocaleString('vi-VN') : "..."}
             </span>
           </div>
+
+           <a 
+             href="https://drive.google.com/file/d/1mmKCkFH2Z7ibO2CEw2jytJNegND_wmzz/view?usp=drive_link"
+             target="_blank"
+             rel="noopener noreferrer"
+             className="flex items-center gap-3 px-4 py-1.5 bg-gradient-to-r from-violet-50 to-violet-100/30 text-violet-800 border border-violet-200 hover:border-violet-300 rounded-xl shadow-2xs transition-colors duration-200 select-none cursor-pointer group"
+           >
+             <div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-xs">
+                <Puzzle className="text-white group-hover:rotate-12 transition-transform duration-200" size={15} />
+             </div>
+             <div className="hidden sm:block text-left animate-pulse">
+                <p className="text-[8px] font-black text-violet-600 tracking-wider uppercase leading-none">Chụp ảnh Toán</p>
+                <p className="text-xs font-black text-violet-950 mt-1 leading-none">Cài Extension</p>
+             </div>
+           </a>
 
            <div className="flex items-center gap-3 px-4 py-1.5 bg-gradient-to-r from-amber-50 to-amber-100/30 text-amber-800 border border-amber-200 hover:border-amber-300 rounded-xl shadow-2xs transition-colors duration-200 select-none">
              <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-500 rounded-lg flex items-center justify-center shadow-xs">
@@ -1297,21 +1262,16 @@ export default function App() {
              setToast({ message: "❌ Lỗi sao chép: Vui lòng tương tác với trang web trước khi nhấn Copy", type: 'error' });
           }
         }} 
-        onPrint={async () => { 
-          if (await deductCredit()) {
-             window.print(); 
-          }
-        }} 
         onExportWord={async () => {
           const previewEl = document.getElementById('markdown-preview-content');
           if (!previewEl) return;
           try {
-             // 1. Thể hiện tiến trình chuẩn bị tải
-             setToast({ message: "⏳ Đang chuẩn bị tệp Word để tải xuống...", type: 'info' });
+             // 1. Chuyển trạng thái sang Đang định dạng
+             setWordExportState('preparing');
              
              if (await deductCredit()) {
-                // Đợi người dùng kịp đọc trạng thái chuẩn bị tệp và tạo cảm giác mượt mà
-                await new Promise(resolve => setTimeout(resolve, 250));
+                // Tăng nhẹ thời gian chờ để người dùng cảm thấy có tiến trình xử lý thực sự
+                await new Promise(resolve => setTimeout(resolve, 800));
 
                 const clone = previewEl.cloneNode(true) as HTMLElement;
                 
@@ -1363,9 +1323,9 @@ export default function App() {
                   </html>
                 `;
 
-                // Bắt đầu lưu trữ tệp tin tải xuống trong hệ thống trình duyệt
-                setToast({ message: "💾 Trình duyệt đang tiếp nhận tệp tin và chuẩn bị lưu xuống máy tính...", type: 'info' });
-                await new Promise(resolve => setTimeout(resolve, 350));
+                // 2. Chuyển sang đóng gói dữ liệu
+                setWordExportState('packaging');
+                await new Promise(resolve => setTimeout(resolve, 900));
 
                 const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
                 const url = URL.createObjectURL(blob);
@@ -1380,11 +1340,14 @@ export default function App() {
                 // Cho trình duyệt thời gian đẩy tệp thực sự lên đĩa/hiển thị thanh công cụ tải xuống
                 setTimeout(() => {
                    URL.revokeObjectURL(url);
-                   setToast({ message: "📁 Đã hoàn tất kết xuất và lưu file Word thành công vào máy tính!", type: 'success' });
-                }, 1600);
+                   setWordExportState('success');
+                }, 1400);
+             } else {
+                setWordExportState('idle');
              }
           } catch (error) {
              console.error('Export Word error:', error);
+             setWordExportState('idle');
              setToast({ message: "❌ Gặp lỗi trong quá trình kết xuất Word", type: 'error' });
           }
         }} 
@@ -1423,51 +1386,209 @@ export default function App() {
         </div>
         <div className={`flex flex-col flex-1 bg-white overflow-y-auto custom-scrollbar transition-all ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
            <div className="flex-1 py-4 md:py-6 px-4 md:px-8 max-w-4xl mx-auto w-full">
-              {/* Tùy chỉnh chế độ xem trước */}
-              <div className="flex justify-between items-center pb-3 border-b border-slate-100 mb-4 select-none no-print">
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5`}>
-                    <span className={previewMode === 'word' ? 'text-indigo-500' : 'text-emerald-500'}>●</span>
-                    <span className="text-slate-500 font-extrabold">
-                      XEM TRƯỚC: {previewMode === 'word' ? 'CHUẨN WORD' : 'CHUẨN WEB'}
-                    </span>
-                  </span>
-                </div>
-                <div className="flex bg-slate-100/50 p-1 rounded-xl border border-slate-200/80">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewMode('web')}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                      previewMode === 'web' 
-                        ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50' 
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    🤪 Bản Web
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewMode('word')}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                      previewMode === 'word' 
-                        ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/50' 
-                        : 'text-slate-500 hover:text-indigo-600'
-                    }`}
-                  >
-                    📝 Bản Word
-                  </button>
-                </div>
-              </div>
 
-              <MarkdownPreview content={previewContent || content} previewMode={previewMode} />
+
+              <MarkdownPreview content={previewContent || content} previewMode="web" />
            </div>
         </div>
       </main>
 
+      {/* Thanh Chân Trang Bản Quyền & Liên Hệ */}
+      <footer className="bg-slate-950 text-slate-300 text-[11px] px-8 py-2 flex items-center justify-between no-print z-50 select-none border-t border-slate-900 shrink-0">
+        <style>{`
+          @keyframes glow-author {
+            0%, 100% {
+              text-shadow: 0 0 4px rgba(99, 102, 241, 0.8), 0 0 12px rgba(99, 102, 241, 0.4);
+              color: #ffffff;
+            }
+            50% {
+              text-shadow: 0 0 1px rgba(99, 102, 241, 0.1);
+              color: #cbd5e1;
+            }
+          }
+          @keyframes glow-zalo {
+            0%, 100% {
+              box-shadow: 0 0 8px rgba(14, 165, 233, 0.4), inset 0 0 3px rgba(14, 165, 233, 0.2);
+              border-color: rgba(56, 189, 248, 0.6);
+              background-color: rgba(15, 23, 42, 0.85);
+            }
+            50% {
+              box-shadow: 0 0 2px rgba(14, 165, 233, 0.1), inset 0 0 1px rgba(14, 165, 233, 0.05);
+              border-color: rgba(56, 189, 248, 0.2);
+              background-color: rgba(15, 23, 42, 0.4);
+            }
+          }
+          .animate-glow-author {
+            animation: glow-author 2.5s ease-in-out infinite;
+          }
+          .animate-glow-zalo {
+            animation: glow-zalo 3s ease-in-out infinite;
+          }
+        `}</style>
+        <div className="flex items-center gap-2 font-medium">
+          <span className="text-indigo-400 animate-pulse">©</span>
+          <span>Bản quyền thuộc về tác giả: <strong className="font-extrabold ml-1 tracking-wide animate-glow-author">Duy Hạnh</strong></span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-slate-850">|</span>
+          <a 
+            href="https://zalo.me/0868640898" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="flex items-center gap-1.5 transition-all duration-300 text-[11px] border px-2.5 py-1 rounded-lg animate-glow-zalo hover:scale-[1.02] cursor-pointer"
+          >
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-sky-400"></span>
+            </span>
+            <span>Zalo hỗ trợ: <strong className="text-sky-300 font-extrabold ml-0.5 tracking-wide">0868.640.898</strong></span>
+          </a>
+        </div>
+      </footer>
+
+      {wordExportState !== 'idle' && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-305 select-none">
+          {/* Backdrop bọc mờ */}
+          <div 
+            className="absolute inset-0 bg-slate-950/85 backdrop-blur-md cursor-pointer transition-opacity" 
+            onClick={() => {
+              if (wordExportState === 'success') {
+                setWordExportState('idle');
+              }
+            }}
+          />
+          
+          {/* Card Popup */}
+          <div className="relative bg-white max-w-[420px] w-full rounded-[30px] overflow-hidden shadow-2xl border border-slate-100 p-8 flex flex-col items-center text-center animate-in zoom-in-95 duration-300 z-10 transition-all">
+            {/* Vùng phát sáng thẩm mỹ góc trên */}
+            <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-48 h-48 rounded-full blur-3xl -z-10 pointer-events-none transition-all duration-500 ${
+              wordExportState === 'success' ? 'bg-gradient-to-b from-indigo-500/15 to-transparent' : 'bg-gradient-to-b from-sky-400/15 to-transparent'
+            }`} />
+
+            {/* Nút X Góc Trên Bên Phải (Chỉ xuất hiện khi hoàn thành thành công) */}
+            {wordExportState === 'success' && (
+              <button
+                onClick={() => setWordExportState('idle')}
+                className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 hover:bg-slate-100/80 p-2 rounded-full transition-all duration-200 cursor-pointer border border-transparent hover:border-slate-200/50"
+                aria-label="Đóng"
+              >
+                <X size={18} className="stroke-[2.5]" />
+              </button>
+            )}
+
+            {/* Vòng quay / Biểu tượng trạng thái */}
+            <div className="relative mb-6 mt-3">
+              {wordExportState === 'preparing' && (
+                <div className="relative flex items-center justify-center">
+                  <div className="absolute inset-0 bg-indigo-500/15 rounded-full blur-xl animate-pulse" />
+                  <div className="relative w-16 h-16 bg-indigo-50/50 rounded-full flex items-center justify-center border-2 border-dashed border-indigo-400 animate-spin">
+                    <Loader2 size={24} className="text-indigo-600 animate-pulse" />
+                  </div>
+                </div>
+              )}
+              {wordExportState === 'packaging' && (
+                <div className="relative flex items-center justify-center">
+                  <div className="absolute inset-0 bg-sky-500/15 rounded-full blur-xl animate-pulse" />
+                  <div className="relative w-16 h-16 bg-sky-50/50 rounded-full flex items-center justify-center border-2 border-dashed border-sky-405 animate-spin">
+                    <Loader2 size={24} className="text-sky-600" />
+                  </div>
+                </div>
+              )}
+              {wordExportState === 'success' && (
+                <div className="relative flex items-center justify-center">
+                  <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-2xl animate-pulse" />
+                  <div className="relative w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center border-2 border-emerald-500/20 shadow-inner">
+                    <CheckCircle2 size={34} className="text-emerald-500 stroke-[2.2]" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Tiêu đề Pop-up */}
+            <h3 className="text-lg font-black text-slate-900 leading-tight mb-2 tracking-tight">
+              {wordExportState === 'preparing' && "Đang Định Dạng... 📝"}
+              {wordExportState === 'packaging' && "Đang Kết Xuất... ⚡"}
+              {wordExportState === 'success' && "Kết Xuất Thành Công! 🎉"}
+            </h3>
+
+            {/* Nội dung thông điệp ngắn gọn tạo cảm hứng */}
+            <p className="text-slate-600 text-[13px] leading-relaxed mb-6 max-w-[340px] px-2 font-medium">
+              {wordExportState === 'preparing' && "🚀 Đang thiết kế và định dạng file Word siêu chuẩn cho bạn..."}
+              {wordExportState === 'packaging' && "⚡ Sắp xong rồi! Đang đóng gói dữ liệu chất lượng cao gửi tới bạn..."}
+              {wordExportState === 'success' && "Tệp Word siêu chất lượng đã được định dạng chuẩn hóa hoàn hảo và đang trên đường tải xuống máy tính của bạn!"}
+            </p>
+
+            {/* Các bước kết xuất động (Visual Checklist) */}
+            <div className="w-full space-y-2 px-3 pb-4 mb-6 border-b border-slate-100 text-left text-xs font-semibold">
+              <div className="flex items-center gap-3">
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${
+                  wordExportState !== 'preparing' ? 'bg-emerald-50 text-emerald-500 border border-emerald-200' : 'bg-indigo-50 text-indigo-600 border border-indigo-200 animate-pulse'
+                }`}>
+                  {wordExportState !== 'preparing' ? "✓" : "📝"}
+                </span>
+                <span className={wordExportState === 'preparing' ? 'text-indigo-600 font-bold' : 'text-slate-400 line-through'}>
+                  1. Chuẩn hóa & thiết kế bố cục Word
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${
+                  wordExportState === 'success' ? 'bg-emerald-50 text-emerald-500 border border-emerald-200' : 
+                  wordExportState === 'packaging' ? 'bg-sky-50 text-sky-600 border border-sky-100' : 'bg-slate-50 text-slate-300 border border-slate-100'
+                }`}>
+                  {wordExportState === 'success' ? "✓" : "⚡"}
+                </span>
+                <span className={wordExportState === 'packaging' ? 'text-sky-600 font-bold' : wordExportState === 'success' ? 'text-slate-400 line-through' : 'text-slate-300 font-normal'}>
+                  2. Đóng gói mã nguồn & tối ưu Math
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${
+                  wordExportState === 'success' ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-300 border border-slate-100'
+                }`}>
+                  📥
+                </span>
+                <span className={wordExportState === 'success' ? 'text-emerald-600 font-extrabold' : 'text-slate-300 font-normal'}>
+                  3. Hoàn tất và truyền dữ liệu file Word
+                </span>
+              </div>
+            </div>
+
+            {/* Hướng dẫn tải xuống (Chỉ hiển thị khi đã thành công) */}
+            {wordExportState === 'success' ? (
+              <>
+                <div className="w-full bg-indigo-50/50 rounded-2xl p-4 border border-indigo-100/40 text-left mb-6 flex gap-3.5 items-start">
+                  <div className="bg-white rounded-xl p-2 h-9 w-9 flex items-center justify-center border border-indigo-100/60 shrink-0 text-[16px] shadow-sm">
+                    📥
+                  </div>
+                  <div className="space-y-0.5">
+                    <h4 className="text-[11px] font-extrabold text-indigo-950 uppercase tracking-widest">Mẹo nhỏ khi download</h4>
+                    <p className="text-slate-500 text-[10.5px] leading-relaxed">
+                      Nếu trình duyệt không tự tải, hãy xem <b>Thanh công cụ</b> hoặc mục <b>Quản lý tải xuống</b> (phím tắt <code>Ctrl + J</code>) của trình duyệt nhé!
+                    </p>
+                  </div>
+                </div>
+
+                {/* Nút hành động */}
+                <button
+                  onClick={() => setWordExportState('idle')}
+                  className="w-full py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-extrabold text-sm rounded-2xl shadow-lg shadow-indigo-600/15 hover:shadow-indigo-600/25 transition-all duration-300 flex items-center justify-center gap-2 group cursor-pointer hover:scale-[1.01]"
+                >
+                  <span>Tuyệt vời, tôi đã rõ</span>
+                </button>
+              </>
+            ) : (
+              <div className="text-[11px] text-slate-400 font-bold bg-slate-50 rounded-xl px-4 py-2 w-full flex items-center justify-center gap-2 animate-pulse">
+                <span>Vui lòng không đóng trình duyệt lúc này ☕</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <DrawingModal isOpen={isDrawingModalOpen} onClose={() => setIsDrawingModalOpen(false)} onSubmit={handleDrawingSubmit} isProcessing={isAiProcessing} />
 
       {showPermissionError && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="bg-white max-w-2xl w-full rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="bg-amber-50 p-8 flex items-center gap-4 border-b border-amber-100">
               <Lock size={32} className="text-amber-600 animate-pulse" />
@@ -1597,7 +1718,7 @@ service cloud.firestore {
       )}
 
       {showConfigError && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="bg-white max-w-2xl w-full rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="bg-red-50 p-8 flex items-center gap-4 border-b border-red-100">
               <ShieldAlert size={32} className="text-red-600 animate-pulse" />
@@ -1643,7 +1764,7 @@ service cloud.firestore {
       )}
 
       {showCreditAlert && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="bg-white max-sm w-full rounded-[32px] p-10 text-center shadow-2xl">
             <AlertTriangle className="text-red-500 mx-auto mb-6" size={40} />
             <h3 className="text-2xl font-black text-slate-900 mb-2">Hết lượt sử dụng</h3>
