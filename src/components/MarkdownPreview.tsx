@@ -411,10 +411,19 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
       }
     };
 
+    const handleSelectStart = (e: Event) => {
+      const container = document.getElementById('markdown-preview-content');
+      if (container && (container.contains(e.target as Node) || e.target === container)) {
+        e.preventDefault();
+      }
+    };
+
     // Đặt capture = true để ưu tiên bắt trước mọi listener khác kể cả extension phá chặn copy
     document.addEventListener('copy', handleGlobalCopy, true);
+    document.addEventListener('selectstart', handleSelectStart, true);
     return () => {
       document.removeEventListener('copy', handleGlobalCopy, true);
+      document.removeEventListener('selectstart', handleSelectStart, true);
     };
   }, [previewMode]);
 
@@ -430,11 +439,35 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
       }}
       className={
         previewMode === 'word'
-          ? "w-full max-w-none bg-white p-12 text-black shadow-xs border border-slate-200 min-h-[400px] select-all leading-relaxed"
-          : "w-full prose prose-slate max-w-none select-none prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-slate-900 prose-h1:text-4xl prose-h1:border-b prose-h1:border-slate-200 prose-h1:pb-4 prose-h1:mb-8 prose-h2:text-3xl prose-h2:text-indigo-700 prose-h2:mt-10 prose-h2:border-b prose-h2:border-slate-100 prose-h2:pb-2 prose-h3:text-2xl prose-h3:text-slate-800 prose-h3:mt-8 prose-p:text-lg prose-p:text-slate-700 prose-p:leading-relaxed prose-p:mb-6 prose-table:border-collapse prose-table:border prose-table:border-slate-300 prose-table:shadow-sm prose-table:my-8 prose-table:w-full prose-thead:bg-slate-100 prose-th:border prose-th:border-slate-300 prose-th:p-3 prose-th:text-slate-800 prose-th:font-bold prose-th:text-left prose-td:border prose-td:border-slate-300 prose-td:p-3 prose-td:text-slate-700 prose-td:align-top prose-tr:even:bg-slate-50 prose-img:rounded-lg prose-img:shadow-md prose-img:mx-auto prose-code:text-pink-600 prose-code:bg-slate-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-code:border prose-code:border-slate-200 prose-code:text-base prose-pre:bg-slate-50 prose-pre:border prose-pre:border-slate-200 prose-pre:shadow-sm prose-pre:text-slate-800 prose-pre:rounded-lg"
+          ? "w-full max-w-none bg-white p-12 text-black shadow-xs border border-slate-200 min-h-[400px] select-all leading-relaxed relative"
+          : "w-full prose prose-slate max-w-none select-none prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-slate-900 prose-h1:text-4xl prose-h1:border-b prose-h1:border-slate-200 prose-h1:pb-4 prose-h1:mb-8 prose-h2:text-3xl prose-h2:text-indigo-700 prose-h2:mt-10 prose-h2:border-b prose-h2:border-slate-100 prose-h2:pb-2 prose-h3:text-2xl prose-h3:text-slate-800 prose-h3:mt-8 prose-p:text-lg prose-p:text-slate-700 prose-p:leading-relaxed prose-p:mb-6 prose-table:border-collapse prose-table:border prose-table:border-slate-300 prose-table:shadow-sm prose-table:my-8 prose-table:w-full prose-thead:bg-slate-100 prose-th:border prose-th:border-slate-300 prose-th:p-3 prose-th:text-slate-800 prose-th:font-bold prose-th:text-left prose-td:border prose-td:border-slate-300 prose-td:p-3 prose-td:text-slate-700 prose-td:align-top prose-tr:even:bg-slate-50 prose-img:rounded-lg prose-img:shadow-md prose-img:mx-auto prose-code:text-pink-600 prose-code:bg-slate-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-code:border prose-code:border-slate-200 prose-code:text-base prose-pre:bg-slate-50 prose-pre:border prose-pre:border-slate-200 prose-pre:shadow-sm prose-pre:text-slate-800 prose-pre:rounded-lg relative"
       }
       style={previewMode === 'word' ? { fontFamily: "'Times New Roman', serif", fontSize: '13pt', color: 'black' } : undefined}
     >
+      {previewMode !== 'word' && (
+        <>
+          {/* Lớp chắn cơ học chặn chuột bôi đen tiếp xúc với văn bản bên dưới */}
+          <div 
+            className="absolute inset-0 z-[100] bg-transparent cursor-default select-none pointer-events-auto"
+            style={{
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              msUserSelect: 'none',
+              MozUserSelect: 'none'
+            }}
+            onContextMenu={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
+            onDragStart={(e) => e.preventDefault()}
+          />
+          {/* Lớp phản xạ siêu mỏng/mờ chống các tiện ích/extension phá bẻ khóa CSS */}
+          <div 
+            className="absolute inset-0 z-[101] bg-white/[0.002] cursor-default select-none pointer-events-auto"
+            onContextMenu={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
+            onDragStart={(e) => e.preventDefault()}
+          />
+        </>
+      )}
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
