@@ -456,8 +456,8 @@ export const DrawingModal: React.FC<DrawingModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    // Increased max-width to 7xl and height to fit large screens better
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-200">
+    // Increased max-width to 7xl and height to fit large screens better, raised z-index to z-[2000] to bypass any copy protection overlay in preview
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl overflow-hidden flex flex-col h-[95vh] md:h-[90vh]">
         
         {/* Header & Tabs */}

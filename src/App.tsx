@@ -1687,7 +1687,7 @@ export default function App() {
       <DrawingModal isOpen={isDrawingModalOpen} onClose={() => setIsDrawingModalOpen(false)} onSubmit={handleDrawingSubmit} isProcessing={isAiProcessing} />
 
       {showPermissionError && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="bg-white max-w-2xl w-full rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="bg-amber-50 p-8 flex items-center gap-4 border-b border-amber-100">
               <Lock size={32} className="text-amber-600 animate-pulse" />
@@ -1817,7 +1817,7 @@ service cloud.firestore {
       )}
 
       {showConfigError && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="bg-white max-w-2xl w-full rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="bg-red-50 p-8 flex items-center gap-4 border-b border-red-100">
               <ShieldAlert size={32} className="text-red-600 animate-pulse" />
@@ -1863,7 +1863,7 @@ service cloud.firestore {
       )}
 
       {showCreditAlert && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="bg-white max-sm w-full rounded-[32px] p-10 text-center shadow-2xl">
             <AlertTriangle className="text-red-500 mx-auto mb-6" size={40} />
             <h3 className="text-2xl font-black text-slate-900 mb-2">Hết lượt sử dụng</h3>
