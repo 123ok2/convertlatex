@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -15,56 +15,93 @@ interface MarkdownPreviewProps {
 
 /**
  * Tách chuỗi và chèn các thẻ span tàng hình chứa ký tự chống copy đè dán (anti-scraping / copy prevention)
+ * Phương pháp nâng cao: Cắt đôi các từ và chèn các ký tự rác cực kỳ nhỏ/tàng hình vào giữa. 
+ * Khi người dùng bình thường đọc, mắt thường không thấy gì sai khác. 
+ * Nhưng khi các tiện ích "bẻ khoá copy" lấy văn bản từ DOM, các ký tự rác này sẽ dính chặt vào văn bản, 
+ * biến văn bản thành đống lộn xộn không thể sử dụng để tra cứu hoặc giải đề được nữa.
  */
 const protectString = (str: string): React.ReactNode[] => {
   if (typeof str !== 'string' || !str) return [str];
-  if (str.trim().length <= 3) return [str];
+  if (str.trim().length <= 1) return [str];
 
   const segments: React.ReactNode[] = [];
-  // Tách text giữ nguyên khoảng trắng
-  const words = str.split(/(\s+)/);
-  let wordCountSinceDecoy = 0;
+  // Phân tách thành các cụm từ và khoảng trắng
+  const parts = str.split(/(\s+)/);
   
-  // Danh sách các chuỗi decoy chống copy ngẫu nhiên, hoàn toàn tàng hình trên UI nhưng dính vào clipboard khi sao chép
-  const decoys = [
-    '/*protected_by_mdp*/', 'x_9', 'v_22', 'm_mdp', 't_38', 'z_2', '[PRO]', 'k_7', 'q_lock', 'b_copy_protected'
-  ];
+  // Danh sách ký tự rác ngẫu nhiên dạng chữ thường, ký hiệu toán học hoặc tiền tố gây nhiễu
+  const decoys = ['x', 'z', 'q', 'y', 'w', 'b', '_', 'r', 'k', '9', '7', '@', 'p', 's'];
   let decoyIdx = Math.floor(Math.random() * decoys.length);
 
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
-    segments.push(word);
-    
-    if (word.trim().length > 0) {
-      wordCountSinceDecoy++;
-    }
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (!part) continue;
 
-    // Cứ sau 3-4 từ có nghĩa, chèn một phần tử rác tàng hình
-    if (wordCountSinceDecoy >= 4 && i < words.length - 2) {
-      wordCountSinceDecoy = 0;
-      const decoy = decoys[decoyIdx % decoys.length];
-      decoyIdx++;
+    if (/^\s+$/.test(part)) {
+      // Giữ nguyên khoảng trắng và ngẫu nhiên chèn rác tàng hình sau khoảng trắng
+      segments.push(part);
+      if (Math.random() < 0.7) {
+        const decoy = decoys[decoyIdx % decoys.length];
+        decoyIdx++;
+        segments.push(
+          <span 
+            key={`decoy-space-${i}`}
+            className="copy-protection-decoy"
+            data-copy-hidden="true"
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              width: '0px',
+              height: '0px',
+              opacity: 0,
+              overflow: 'hidden',
+              pointerEvents: 'none',
+              fontSize: '0px',
+              lineHeight: 0,
+              display: 'inline-block',
+              color: 'transparent'
+            }}
+          >
+            {decoy}
+          </span>
+        );
+      }
+    } else {
+      // Với mỗi từ có độ dài từ 3 ký tự trở lên (phù hợp với hầu hết từ tiếng Việt như "câu", "đáp", "án")
+      // Ta bẻ đôi từ đó ra và nhét ký tự rác vào giữa
+      if (part.length >= 3 && !part.startsWith('$')) {
+        const mid = Math.floor(part.length / 2);
+        const startPart = part.substring(0, mid);
+        const endPart = part.substring(mid);
+        const decoy = decoys[decoyIdx % decoys.length];
+        decoyIdx++;
 
-      segments.push(
-        <span 
-          key={`decoy-${i}`}
-          className="copy-protection-decoy pointer-events-none select-none opacity-0 inline-block w-0 h-0 overflow-hidden leading-[0] text-[0px]"
-          style={{
-            position: 'absolute',
-            width: '0px',
-            height: '0px',
-            opacity: 0,
-            overflow: 'hidden',
-            pointerEvents: 'none',
-            fontSize: '0px',
-            lineHeight: 0,
-            display: 'inline-block'
-          }}
-          aria-hidden="true"
-        >
-          {decoy}
-        </span>
-      );
+        segments.push(startPart);
+        segments.push(
+          <span 
+            key={`decoy-mid-${i}`}
+            className="copy-protection-decoy"
+            data-copy-hidden="true"
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              width: '0px',
+              height: '0px',
+              opacity: 0,
+              overflow: 'hidden',
+              pointerEvents: 'none',
+              fontSize: '0px',
+              lineHeight: 0,
+              display: 'inline-block',
+              color: 'transparent'
+            }}
+          >
+            {decoy}
+          </span>
+        );
+        segments.push(endPart);
+      } else {
+        segments.push(part);
+      }
     }
   }
 
@@ -288,13 +325,107 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
 
   }, [content]);
 
+  // --- HÀM XÁO TRỘN VÀ CHÈN KÝ TỰ LẠ CHỐNG COPY TRÁI PHÉP ---
+  const scrambleText = (text: string): string => {
+    if (!text) return '';
+    
+    // Bản đồ thay thế homoglyphs (ký tự nhìn giống hệt nhau nhưng khác mã Unicode)
+    // Giúp phá vỡ hoàn toàn khả năng search Google, tra cứu đáp án hoặc nạp vào AI (nhận diện sai từ)
+    const homoglyphs: Record<string, string> = {
+      'a': 'а', 'c': 'с', 'e': 'е', 'o': 'о', 'p': 'р', 'y': 'у', 'x': 'х', 's': 'ѕ', 'i': 'і',
+      'A': 'А', 'C': 'С', 'E': 'Е', 'O': 'О', 'P': 'Р', 'Y': 'Ү', 'X': 'Х', 'S': 'Ѕ', 'I': 'І'
+    };
+
+    const lines = text.split('\n');
+    const scrambledLines = lines.map(line => {
+      let result = '';
+      const parts = line.split(/(\s+)/);
+
+      for (let part of parts) {
+        if (/^\s+$/.test(part)) {
+          result += part;
+        } else {
+          let newWord = '';
+          for (let j = 0; j < part.length; j++) {
+            const char = part[j];
+            // Chèn ngẫu nhiên ký tự gây nhiễu vô hình hoặc ký hiệu lạ vào giữa từ đối với các từ dài hơn 3 chữ
+            if (j > 0 && j === Math.floor(part.length / 2) && part.length >= 3 && Math.random() < 0.7) {
+              const noises = ['\u200B', 'χ', 'ϕ', '¹', '₀', '`', '■', '▫', '†', '‡'];
+              newWord += noises[Math.floor(Math.random() * noises.length)];
+            }
+            newWord += homoglyphs[char] || char;
+          }
+          
+          // Tráo đổi ngẫu nhiên ký tự trong các từ dài để phá vỡ cấu trúc văn bản
+          if (part.length > 4 && Math.random() < 0.4 && !part.includes('$') && !part.includes('\\')) {
+            const chars = newWord.split('');
+            const idx1 = 1 + Math.floor(Math.random() * (chars.length - 2));
+            const idx2 = 1 + Math.floor(Math.random() * (chars.length - 2));
+            const temp = chars[idx1];
+            chars[idx1] = chars[idx2];
+            chars[idx2] = temp;
+            newWord = chars.join('');
+          }
+          result += newWord;
+        }
+      }
+      return result;
+    });
+
+    const header = `========================================================\n` +
+                   `⚠️ CẢNH BÁO BẢN QUYỀN - NỘI DUNG ĐÃ BỊ XÁO TRỘN TỰ ĐỘNG\n` +
+                   `Bạn đang sao chép tài liệu bảo mật trên ứng dụng Markdown Pro.\n` +
+                   `Hệ thống đã tự động mã hóa cấu trúc từ học và chèn ký tự gây nhiễu.\n` +
+                   `Để lấy file Word hoặc sao chép văn bản đã định dạng chuẩn đẹp,\n` +
+                   `vui lòng sử dụng các tính năng chính thức trên thanh công cụ.\n` +
+                   `========================================================\n\n`;
+
+    const footer = `\n\n========================================================\n` +
+                   `MDP Copy-Protection Engine Active. [Secure Code: ${Math.floor(100000 + Math.random() * 900000)}]\n` +
+                   `=================================================`;
+
+    return header + scrambledLines.join('\n') + footer;
+  };
+
+  // Sử dụng capturing listener để bắt sự kiện copy ở cấp độ tài liệu sớm nhất trước khi các extension có thể tắt/hủy bỏ
+  useEffect(() => {
+    if (previewMode === 'word') return;
+
+    const handleGlobalCopy = (e: ClipboardEvent) => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+
+      const container = document.getElementById('markdown-preview-content');
+      if (!container) return;
+
+      const range = selection.getRangeAt(0);
+      // Nếu lựa chọn nằm trong khu vực preview của chúng ta
+      if (container.contains(range.commonAncestorContainer) || container.contains(range.startContainer)) {
+        e.preventDefault();
+        const selectedText = selection.toString();
+        const scrambledContent = scrambleText(selectedText);
+        
+        if (e.clipboardData) {
+          e.clipboardData.setData('text/plain', scrambledContent);
+        }
+      }
+    };
+
+    // Đặt capture = true để ưu tiên bắt trước mọi listener khác kể cả extension phá chặn copy
+    document.addEventListener('copy', handleGlobalCopy, true);
+    return () => {
+      document.removeEventListener('copy', handleGlobalCopy, true);
+    };
+  }, [previewMode]);
+
   return (
     <div 
       id="markdown-preview-content" 
       onCopy={(e) => {
         if (previewMode !== 'word') {
           e.preventDefault();
-          e.clipboardData.setData('text/plain', '⚠️ Tài liệu được bảo vệ bản quyền trên ứng dụng Markdown Pro. Nếu bạn muốn sao chép tài liệu đã chuẩn hoá đẹp đẽ, hãy nhấp vào nút "Copy Đã Định Dạng" ở góc phải màn hình.');
+          const selectedText = window.getSelection()?.toString() || '';
+          e.clipboardData.setData('text/plain', scrambleText(selectedText));
         }
       }}
       className={
