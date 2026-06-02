@@ -1224,6 +1224,9 @@ export default function App() {
              if (await deductCredit()) {
                 const clone = previewEl.cloneNode(true) as HTMLElement;
                 
+                // Xóa các thẻ tàng hình chống sao chép bằng tiện ích trước khi dọn dẹp các thẻ khác
+                clone.querySelectorAll('.copy-protection-decoy').forEach(el => el.remove());
+                
                 // 1. Dọn dẹp: Xóa phần KaTeX HTML thừa
                 clone.querySelectorAll('.katex-html').forEach(el => el.remove());
                 
@@ -1321,6 +1324,9 @@ export default function App() {
                 await new Promise(resolve => setTimeout(resolve, 800));
 
                 const clone = previewEl.cloneNode(true) as HTMLElement;
+                
+                // Xóa các thẻ tàng hình chống sao chép bằng tiện ích trước khi dọn dẹp các thẻ khác
+                clone.querySelectorAll('.copy-protection-decoy').forEach(el => el.remove());
                 
                 // Dọn dẹp MathJax/KaTeX
                 clone.querySelectorAll('.katex-html').forEach(el => el.remove());

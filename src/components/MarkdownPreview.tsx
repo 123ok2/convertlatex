@@ -13,6 +13,111 @@ interface MarkdownPreviewProps {
   previewMode?: 'web' | 'word';
 }
 
+/**
+ * Tách chuỗi và chèn các thẻ span tàng hình chứa ký tự chống copy đè dán (anti-scraping / copy prevention)
+ */
+const protectString = (str: string): React.ReactNode[] => {
+  if (typeof str !== 'string' || !str) return [str];
+  if (str.trim().length <= 3) return [str];
+
+  const segments: React.ReactNode[] = [];
+  // Tách text giữ nguyên khoảng trắng
+  const words = str.split(/(\s+)/);
+  let wordCountSinceDecoy = 0;
+  
+  // Danh sách các chuỗi decoy chống copy ngẫu nhiên, hoàn toàn tàng hình trên UI nhưng dính vào clipboard khi sao chép
+  const decoys = [
+    '/*protected_by_mdp*/', 'x_9', 'v_22', 'm_mdp', 't_38', 'z_2', '[PRO]', 'k_7', 'q_lock', 'b_copy_protected'
+  ];
+  let decoyIdx = Math.floor(Math.random() * decoys.length);
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    segments.push(word);
+    
+    if (word.trim().length > 0) {
+      wordCountSinceDecoy++;
+    }
+
+    // Cứ sau 3-4 từ có nghĩa, chèn một phần tử rác tàng hình
+    if (wordCountSinceDecoy >= 4 && i < words.length - 2) {
+      wordCountSinceDecoy = 0;
+      const decoy = decoys[decoyIdx % decoys.length];
+      decoyIdx++;
+
+      segments.push(
+        <span 
+          key={`decoy-${i}`}
+          className="copy-protection-decoy pointer-events-none select-none opacity-0 inline-block w-0 h-0 overflow-hidden leading-[0] text-[0px]"
+          style={{
+            position: 'absolute',
+            width: '0px',
+            height: '0px',
+            opacity: 0,
+            overflow: 'hidden',
+            pointerEvents: 'none',
+            fontSize: '0px',
+            lineHeight: 0,
+            display: 'inline-block'
+          }}
+          aria-hidden="true"
+        >
+          {decoy}
+        </span>
+      );
+    }
+  }
+
+  return segments;
+};
+
+/**
+ * Hàm đệ quy duyệt qua component tree, bảo vệ text nodes, bỏ qua khối LaTeX và Code blocks
+ */
+const protectNode = (node: React.ReactNode): React.ReactNode => {
+  if (!node) return null;
+
+  if (typeof node === 'string') {
+    return <React.Fragment>{protectString(node)}</React.Fragment>;
+  }
+
+  if (typeof node === 'number') {
+    return node;
+  }
+
+  if (Array.isArray(node)) {
+    return node.map((child, index) => <React.Fragment key={index}>{protectNode(child)}</React.Fragment>);
+  }
+
+  if (React.isValidElement(node)) {
+    const element = node as React.ReactElement<any>;
+    
+    // Bỏ qua các khối toán học KaTeX, các cấu trúc SyntaxHighlighter hoặc code
+    const className = element.props?.className || '';
+    const typeStr = typeof element.type === 'string' ? element.type : (element.type as any)?.name || '';
+
+    if (
+      className.includes('katex') || 
+      className.includes('prism') || 
+      className.includes('code') ||
+      typeStr === 'code' ||
+      typeStr === 'pre' ||
+      typeStr === 'SyntaxHighlighter'
+    ) {
+      return node; // Trả về nguyên bản
+    }
+
+    if (element.props && element.props.children) {
+      return React.cloneElement(element, {
+        ...element.props,
+        children: protectNode(element.props.children)
+      });
+    }
+  }
+
+  return node;
+};
+
 export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previewMode = 'web' }) => {
   
   const processedContent = useMemo(() => {
@@ -186,10 +291,16 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
   return (
     <div 
       id="markdown-preview-content" 
+      onCopy={(e) => {
+        if (previewMode !== 'word') {
+          e.preventDefault();
+          e.clipboardData.setData('text/plain', '⚠️ Tài liệu được bảo vệ bản quyền trên ứng dụng Markdown Pro. Nếu bạn muốn sao chép tài liệu đã chuẩn hoá đẹp đẽ, hãy nhấp vào nút "Copy Đã Định Dạng" ở góc phải màn hình.');
+        }
+      }}
       className={
         previewMode === 'word'
           ? "w-full max-w-none bg-white p-12 text-black shadow-xs border border-slate-200 min-h-[400px] select-all leading-relaxed"
-          : "w-full prose prose-slate max-w-none prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-slate-900 prose-h1:text-4xl prose-h1:border-b prose-h1:border-slate-200 prose-h1:pb-4 prose-h1:mb-8 prose-h2:text-3xl prose-h2:text-indigo-700 prose-h2:mt-10 prose-h2:border-b prose-h2:border-slate-100 prose-h2:pb-2 prose-h3:text-2xl prose-h3:text-slate-800 prose-h3:mt-8 prose-p:text-lg prose-p:text-slate-700 prose-p:leading-relaxed prose-p:mb-6 prose-table:border-collapse prose-table:border prose-table:border-slate-300 prose-table:shadow-sm prose-table:my-8 prose-table:w-full prose-thead:bg-slate-100 prose-th:border prose-th:border-slate-300 prose-th:p-3 prose-th:text-slate-800 prose-th:font-bold prose-th:text-left prose-td:border prose-td:border-slate-300 prose-td:p-3 prose-td:text-slate-700 prose-td:align-top prose-tr:even:bg-slate-50 prose-img:rounded-lg prose-img:shadow-md prose-img:mx-auto prose-code:text-pink-600 prose-code:bg-slate-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-code:border prose-code:border-slate-200 prose-code:text-base prose-pre:bg-slate-50 prose-pre:border prose-pre:border-slate-200 prose-pre:shadow-sm prose-pre:text-slate-800 prose-pre:rounded-lg"
+          : "w-full prose prose-slate max-w-none select-none prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-slate-900 prose-h1:text-4xl prose-h1:border-b prose-h1:border-slate-200 prose-h1:pb-4 prose-h1:mb-8 prose-h2:text-3xl prose-h2:text-indigo-700 prose-h2:mt-10 prose-h2:border-b prose-h2:border-slate-100 prose-h2:pb-2 prose-h3:text-2xl prose-h3:text-slate-800 prose-h3:mt-8 prose-p:text-lg prose-p:text-slate-700 prose-p:leading-relaxed prose-p:mb-6 prose-table:border-collapse prose-table:border prose-table:border-slate-300 prose-table:shadow-sm prose-table:my-8 prose-table:w-full prose-thead:bg-slate-100 prose-th:border prose-th:border-slate-300 prose-th:p-3 prose-th:text-slate-800 prose-th:font-bold prose-th:text-left prose-td:border prose-td:border-slate-300 prose-td:p-3 prose-td:text-slate-700 prose-td:align-top prose-tr:even:bg-slate-50 prose-img:rounded-lg prose-img:shadow-md prose-img:mx-auto prose-code:text-pink-600 prose-code:bg-slate-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-code:border prose-code:border-slate-200 prose-code:text-base prose-pre:bg-slate-50 prose-pre:border prose-pre:border-slate-200 prose-pre:shadow-sm prose-pre:text-slate-800 prose-pre:rounded-lg"
       }
       style={previewMode === 'word' ? { fontFamily: "'Times New Roman', serif", fontSize: '13pt', color: 'black' } : undefined}
     >
@@ -197,23 +308,27 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
-          h1: ({node, ...props}) => (
-            previewMode === 'word'
-              ? <h1 className="text-[18pt] font-bold text-[#1e40af] mt-4 mb-4 text-left leading-tight" style={{ fontFamily: "'Times New Roman', serif" }} {...props} />
-              : <h1 className="text-4xl font-extrabold border-b border-slate-200 pb-4 mb-8 text-slate-900 leading-tight" {...props} />
-          ),
-          h2: ({node, ...props}) => (
-            previewMode === 'word'
-              ? <h2 className="text-[16pt] font-bold text-[#1e40af] mt-4 mb-3 text-left leading-tight" style={{ fontFamily: "'Times New Roman', serif" }} {...props} />
-              : <h2 className="text-3xl font-bold text-indigo-700 mt-10 border-b border-slate-100 pb-2 leading-tight" {...props} />
-          ),
-          h3: ({node, ...props}) => (
-            previewMode === 'word'
-              ? <h3 className="text-[14pt] font-bold text-[#1e40af] mt-4 mb-2 text-left leading-tight" style={{ fontFamily: "'Times New Roman', serif" }} {...props} />
-              : <h3 className="text-2xl font-bold text-slate-800 mt-8 leading-tight" {...props} />
-          ),
+          h1: ({node, ...props}) => {
+            const protectedChildren = protectNode(props.children);
+            return previewMode === 'word'
+              ? <h1 className="text-[18pt] font-bold text-[#1e40af] mt-4 mb-4 text-left leading-tight" style={{ fontFamily: "'Times New Roman', serif" }}>{protectedChildren}</h1>
+              : <h1 className="text-4xl font-extrabold border-b border-slate-200 pb-4 mb-8 text-slate-900 leading-tight">{protectedChildren}</h1>;
+          },
+          h2: ({node, ...props}) => {
+            const protectedChildren = protectNode(props.children);
+            return previewMode === 'word'
+              ? <h2 className="text-[16pt] font-bold text-[#1e40af] mt-4 mb-3 text-left leading-tight" style={{ fontFamily: "'Times New Roman', serif" }}>{protectedChildren}</h2>
+              : <h2 className="text-3xl font-bold text-indigo-700 mt-10 border-b border-slate-100 pb-2 leading-tight">{protectedChildren}</h2>;
+          },
+          h3: ({node, ...props}) => {
+            const protectedChildren = protectNode(props.children);
+            return previewMode === 'word'
+              ? <h3 className="text-[14pt] font-bold text-[#1e40af] mt-4 mb-2 text-left leading-tight" style={{ fontFamily: "'Times New Roman', serif" }}>{protectedChildren}</h3>
+              : <h3 className="text-2xl font-bold text-slate-800 mt-8 leading-tight">{protectedChildren}</h3>;
+          },
           p: ({node, ...props}) => {
             const children = props.children;
+            const protectedChildren = protectNode(children);
             // Trích xuất văn bản thuần để nhận diện câu hỏi trắc nghiệm
             const getInlineText = (n: any): string => {
               if (!n) return "";
@@ -239,9 +354,10 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
                   style={{ 
                     fontFamily: "'Times New Roman', serif",
                     ...(isMcq ? { paddingLeft: '24pt', textIndent: '-24pt' } : {})
-                  }} 
-                  {...props} 
-                />
+                  }}
+                >
+                  {protectedChildren}
+                </p>
               );
             }
 
@@ -249,10 +365,11 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
               <p 
                 className="text-lg text-slate-700 leading-relaxed mb-3" 
                 style={{ paddingLeft: '24pt', textIndent: '-24pt' }}
-                {...props} 
-              />
+              >
+                {protectedChildren}
+              </p>
             ) : (
-              <p className="text-lg text-slate-700 leading-relaxed mb-6" {...props} />
+              <p className="text-lg text-slate-700 leading-relaxed mb-6">{protectedChildren}</p>
             );
           },
           table: ({node, ...props}) => (
@@ -261,16 +378,18 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
               : <table className="w-full border-collapse border border-slate-300 my-8 shadow-sm" {...props} />
           ),
           thead: ({node, ...props}) => <thead {...props} />,
-          th: ({node, ...props}) => (
-            previewMode === 'word'
-              ? <th className="p-[5pt] font-bold text-left" style={{ border: "1px solid black" }} {...props} />
-              : <th className="border border-slate-300 p-3 text-slate-800 font-bold bg-slate-100" {...props} />
-          ),
-          td: ({node, ...props}) => (
-            previewMode === 'word'
-              ? <td className="p-[5pt] text-left" style={{ border: "1px solid black" }} {...props} />
-              : <td className="border border-slate-300 p-3 text-slate-700 align-top" {...props} />
-          ),
+          th: ({node, ...props}) => {
+            const protectedChildren = protectNode(props.children);
+            return previewMode === 'word'
+              ? <th className="p-[5pt] font-bold text-left" style={{ border: "1px solid black" }}>{protectedChildren}</th>
+              : <th className="border border-slate-300 p-3 text-slate-800 font-bold bg-slate-100">{protectedChildren}</th>;
+          },
+          td: ({node, ...props}) => {
+            const protectedChildren = protectNode(props.children);
+            return previewMode === 'word'
+              ? <td className="p-[5pt] text-left" style={{ border: "1px solid black" }}>{protectedChildren}</td>
+              : <td className="border border-slate-300 p-3 text-slate-700 align-top">{protectedChildren}</td>;
+          },
           ul: ({node, ...props}) => (
             previewMode === 'word'
               ? <ul className="list-disc pl-8 mb-[10pt] text-[13pt] text-black" style={{ fontFamily: "'Times New Roman', serif" }} {...props} />
@@ -281,11 +400,12 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
               ? <ol className="list-decimal pl-8 mb-[10pt] text-[13pt] text-black" style={{ fontFamily: "'Times New Roman', serif" }} {...props} />
               : <ol className="list-decimal pl-8 mb-6 text-lg text-slate-700" {...props} />
           ),
-          li: ({node, ...props}) => (
-            previewMode === 'word'
-              ? <li className="mb-1 text-black" style={{ fontFamily: "'Times New Roman', serif" }} {...props} />
-              : <li className="mb-1 text-slate-700" {...props} />
-          ),
+          li: ({node, ...props}) => {
+            const protectedChildren = protectNode(props.children);
+            return previewMode === 'word'
+              ? <li className="mb-1 text-black" style={{ fontFamily: "'Times New Roman', serif" }}>{protectedChildren}</li>
+              : <li className="mb-1 text-slate-700">{protectedChildren}</li>;
+          },
           code({ inline, className, children, ...props }: MarkdownComponentProps) {
             const match = /language-(\w+)/.exec(className || '');
             return !inline && match ? (
@@ -318,16 +438,21 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
               </code>
             );
           },
-          blockquote: ({node, ...props}) => (
-            <div className={
-              previewMode === 'word'
-                ? "flex gap-4 my-4 bg-slate-50 p-4 rounded-r border-l-4 border-slate-300"
-                : "flex gap-4 my-6 bg-indigo-50/50 p-6 rounded-r-lg border-l-4 border-indigo-500"
-            }>
-               <div className="text-slate-300 text-4xl font-serif leading-none">"</div>
-               <blockquote className="italic text-slate-700 flex-1 text-lg leading-8" {...props} />
-            </div>
-          )
+          blockquote: ({node, ...props}) => {
+            const protectedChildren = protectNode(props.children);
+            return (
+              <div className={
+                previewMode === 'word'
+                  ? "flex gap-4 my-4 bg-slate-50 p-4 rounded-r border-l-4 border-slate-300"
+                  : "flex gap-4 my-6 bg-indigo-50/50 p-6 rounded-r-lg border-l-4 border-indigo-500"
+              }>
+                 <div className="text-slate-300 text-4xl font-serif leading-none">"</div>
+                 <blockquote className="italic text-slate-700 flex-1 text-lg leading-8">
+                   {protectedChildren}
+                 </blockquote>
+              </div>
+            );
+          }
         }}
         children={processedContent}
       />
