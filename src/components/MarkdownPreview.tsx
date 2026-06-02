@@ -18,8 +18,37 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
   const processedContent = useMemo(() => {
     if (!content) return '';
 
+    // --- STEP 0: DETECT MULTIPLE CHOICE OPTIONS & ENSURE NEW LINES ---
+    // Đảm bảo các phương án trắc nghiệm (A., B., C., D.) viết liền trên các dòng trong editor đều được tách thành các đoạn (paragraphs) riêng biệt
+    const isOptionLine = (l: string) => /^\s*[A-Ea-e][\.\)\:\-]\s+/.test(l);
+    let inCodeBlock = false;
+    let inMathBlock = false;
+    const rawLines = content.split('\n');
+    const processedLines: string[] = [];
+    
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i];
+      const trimmed = line.trim();
+      
+      if (trimmed.startsWith('```')) {
+        inCodeBlock = !inCodeBlock;
+      }
+      if (trimmed === '$$') {
+        inMathBlock = !inMathBlock;
+      }
+      
+      if (!inCodeBlock && !inMathBlock && isOptionLine(line)) {
+        // Nếu dòng trước đó không phải dòng trống, tự động chèn thêm dòng trống để tạo paragraph riêng
+        if (processedLines.length > 0 && processedLines[processedLines.length - 1].trim() !== '') {
+          processedLines.push('');
+        }
+      }
+      processedLines.push(line);
+    }
+    const preProcessedContent = processedLines.join('\n');
+
     // --- STEP 1: PRE-NORMALIZE MATH DELIMITERS ---
-    let text = content
+    let text = preProcessedContent
       .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$') // Chuyển \[ \] thành $$ $$
       .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');   // Chuyển \( \) thành $ $
 
@@ -183,11 +212,49 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
               ? <h3 className="text-[14pt] font-bold text-[#1e40af] mt-4 mb-2 text-left leading-tight" style={{ fontFamily: "'Times New Roman', serif" }} {...props} />
               : <h3 className="text-2xl font-bold text-slate-800 mt-8 leading-tight" {...props} />
           ),
-          p: ({node, ...props}) => (
-            previewMode === 'word'
-              ? <p className="text-[13pt] text-black leading-normal mb-[10pt] text-justify" style={{ fontFamily: "'Times New Roman', serif" }} {...props} />
-              : <p className="text-lg text-slate-700 leading-relaxed mb-6" {...props} />
-          ),
+          p: ({node, ...props}) => {
+            const children = props.children;
+            // Trích xuất văn bản thuần để nhận diện câu hỏi trắc nghiệm
+            const getInlineText = (n: any): string => {
+              if (!n) return "";
+              if (typeof n === "string") return n;
+              if (typeof n === "number") return String(n);
+              if (Array.isArray(n)) return n.map(getInlineText).join("");
+              if (React.isValidElement(n)) {
+                const element = n as React.ReactElement<any>;
+                if (element.props && element.props.children) {
+                    return getInlineText(element.props.children);
+                }
+              }
+              return "";
+            };
+            
+            const plainText = getInlineText(children);
+            const isMcq = /^\s*[A-Ea-e][\.\)\:\-]\s+/.test(plainText);
+
+            if (previewMode === 'word') {
+              return (
+                <p 
+                  className={`text-[13pt] text-black leading-normal mb-[8pt] text-justify`}
+                  style={{ 
+                    fontFamily: "'Times New Roman', serif",
+                    ...(isMcq ? { paddingLeft: '24pt', textIndent: '-24pt' } : {})
+                  }} 
+                  {...props} 
+                />
+              );
+            }
+
+            return isMcq ? (
+              <p 
+                className="text-lg text-slate-700 leading-relaxed mb-3" 
+                style={{ paddingLeft: '24pt', textIndent: '-24pt' }}
+                {...props} 
+              />
+            ) : (
+              <p className="text-lg text-slate-700 leading-relaxed mb-6" {...props} />
+            );
+          },
           table: ({node, ...props}) => (
             previewMode === 'word'
               ? <table className="w-full border-collapse my-4 text-[13pt]" style={{ fontFamily: "'Times New Roman', serif", border: "1px solid black", borderCollapse: "collapse" }} {...props} />

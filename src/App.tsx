@@ -250,6 +250,41 @@ const formatAiPastedContent = (text: string): string => {
   return formattedLines.join('\n');
 };
 
+/**
+ * Chuẩn hóa khoảng trắng trong clone HTML để dán sang MS Word không bị mất spaces hoặc bị trùng lặp khoảng trắng
+ */
+const normalizeSpacesInClone = (root: HTMLElement) => {
+  // 1. Thu nhỏ các khoảng trắng liên tiếp trong tất cả các nút văn bản (text nodes)
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node.nodeValue) {
+      node.nodeValue = node.nodeValue.replace(/[^\S\r\n]{2,}/g, ' ');
+    }
+  }
+
+  // 2. Chuyển đổi các khoảng trắng bình thường ở ngay cạnh công thức toán học (.katex) sang khoảng trắng không ngắt (\u00A0)
+  // Việc này bảo vệ khoảng trắng không bị MS Word tự động trim khi dán (copy-paste) hoặc mở file Word HTML (export)
+  root.querySelectorAll('.katex').forEach(el => {
+    const prev = el.previousSibling;
+    if (prev && prev.nodeType === Node.TEXT_NODE) {
+      const txt = prev.nodeValue || '';
+      if (txt.endsWith(' ')) {
+        // Thay ký tự khoảng trắng cuối cùng bằng khoảng trắng cứng
+        prev.nodeValue = txt.slice(0, -1) + '\u00A0';
+      }
+    }
+    const next = el.nextSibling;
+    if (next && next.nodeType === Node.TEXT_NODE) {
+      const txt = next.nodeValue || '';
+      if (txt.startsWith(' ')) {
+        // Thay ký tự khoảng trắng đầu tiên bằng khoảng trắng cứng
+        next.nodeValue = '\u00A0' + txt.slice(1);
+      }
+    }
+  });
+};
+
 let visitLogged = false;
 
 export default function App() {
@@ -1192,6 +1227,9 @@ export default function App() {
                 // 1. Dọn dẹp: Xóa phần KaTeX HTML thừa
                 clone.querySelectorAll('.katex-html').forEach(el => el.remove());
                 
+                // Sửa lỗi dính chữ và khoảng trắng trùng lặp trước/sau khi dọn dẹp KaTeX HTML
+                normalizeSpacesInClone(clone);
+                
                 // 2. Tối ưu MathML cho Word: Phân biệt inline và block
                 clone.querySelectorAll('.katex-mathml').forEach(el => {
                   const isBlock = el.closest('.katex-display') !== null;
@@ -1286,6 +1324,9 @@ export default function App() {
                 
                 // Dọn dẹp MathJax/KaTeX
                 clone.querySelectorAll('.katex-html').forEach(el => el.remove());
+                
+                // Sửa lỗi dính chữ và khoảng trắng trùng lặp trước/sau khi dọn dẹp KaTeX HTML
+                normalizeSpacesInClone(clone);
                 clone.querySelectorAll('.katex-mathml').forEach(el => {
                    const isBlock = el.closest('.katex-display') !== null;
                    const style = (el as HTMLElement).style;

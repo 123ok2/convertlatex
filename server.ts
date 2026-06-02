@@ -30,7 +30,7 @@ async function startServer() {
           properties: {},
           children: [
             new Paragraph({
-              children: parts.map((part: string) => {
+              children: parts.map((part: string, index: number) => {
                 if (part.startsWith('$') && part.endsWith('$')) {
                   const latex = part.slice(1, -1).trim();
                   return new Math({
@@ -42,8 +42,22 @@ async function startServer() {
                     ],
                   });
                 }
+
+                // Chỉnh sửa văn bản thường:
+                // 1. Thu nhỏ các khoảng trắng trùng lặp bên trong thành 1 khoảng trắng duy nhất
+                let textVal = part.replace(/[^\S\r\n]{2,}/g, ' ');
+
+                // 2. Chuyển đổi khoảng trắng kề sát với công thức toán ($) thành khoảng trắng không ngắt (\u00A0)
+                // Điều này giúp MS Word nhận diện và giữ nguyên khoảng trắng phân cách khi hiển thị/import công thức
+                if (parts[index + 1] && parts[index + 1].startsWith('$') && textVal.endsWith(' ')) {
+                  textVal = textVal.slice(0, -1) + '\u00A0';
+                }
+                if (parts[index - 1] && parts[index - 1].startsWith('$') && textVal.startsWith(' ')) {
+                  textVal = '\u00A0' + textVal.slice(1);
+                }
+
                 return new TextRun({
-                  text: part,
+                  text: textVal,
                   font: "Times New Roman",
                   size: 26, // Equivalent to 13pt in Word
                 });
