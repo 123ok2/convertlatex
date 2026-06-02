@@ -156,6 +156,16 @@ const protectNode = (node: React.ReactNode): React.ReactNode => {
 };
 
 export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previewMode = 'web' }) => {
+  const [mousePos, setMousePos] = React.useState({ x: 0, y: 0 });
+  const [isHovering, setIsHovering] = React.useState(false);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMousePos({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    });
+  };
   
   const processedContent = useMemo(() => {
     if (!content) return '';
@@ -446,22 +456,36 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
     >
       {previewMode !== 'word' && (
         <>
-          {/* Lớp chắn cơ học chặn chuột bôi đen tiếp xúc với văn bản bên dưới */}
+          {/* Lớp chắn cơ học chặn chuột bôi đen tiếp xúc với văn bản bên dưới, tích hợp hiệu ứng gương trượt phản chiếu */}
           <div 
-            className="absolute inset-0 z-[100] bg-transparent cursor-default select-none pointer-events-auto"
+            className="absolute inset-0 z-[100] cursor-default select-none pointer-events-auto transition-all"
+            style={{
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              msUserSelect: 'none',
+              MozUserSelect: 'none',
+              background: isHovering 
+                ? `radial-gradient(220px circle at ${mousePos.x}px ${mousePos.y}px, rgba(99, 102, 241, 0.05) 0%, rgba(255, 255, 255, 0) 80%)`
+                : 'transparent',
+              mixBlendMode: 'screen',
+              pointerEvents: 'auto'
+            }}
+            onMouseEnter={() => setIsHovering(true)}
+            onMouseLeave={() => setIsHovering(false)}
+            onMouseMove={handleMouseMove}
+            onContextMenu={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
+            onDragStart={(e) => e.preventDefault()}
+          />
+          {/* Lớp phản xạ siêu mỏng/mờ bổ trợ, chống các tiện ích/extension phá bẻ khóa CSS */}
+          <div 
+            className="absolute inset-0 z-[101] bg-white/[0.002] cursor-default select-none pointer-events-none"
             style={{
               userSelect: 'none',
               WebkitUserSelect: 'none',
               msUserSelect: 'none',
               MozUserSelect: 'none'
             }}
-            onContextMenu={(e) => e.preventDefault()}
-            onMouseDown={(e) => e.preventDefault()}
-            onDragStart={(e) => e.preventDefault()}
-          />
-          {/* Lớp phản xạ siêu mỏng/mờ chống các tiện ích/extension phá bẻ khóa CSS */}
-          <div 
-            className="absolute inset-0 z-[101] bg-white/[0.002] cursor-default select-none pointer-events-auto"
             onContextMenu={(e) => e.preventDefault()}
             onMouseDown={(e) => e.preventDefault()}
             onDragStart={(e) => e.preventDefault()}
