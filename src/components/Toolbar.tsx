@@ -118,7 +118,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       {/* Các hành động chính ở góc bên phải */}
       <div className="flex items-center gap-4">
         <a
-          href="https://drive.google.com/file/d/1mmKCkFH2Z7ibO2CEw2jytJNegND_wmzz/view?usp=drive_link"
+          href="https://drive.google.com/file/d/1rrC39rto8-4erhY7NLSIzCQQdyK6adej/view?usp=drive_link"
           target="_blank"
           rel="noopener noreferrer"
 className="flex items-center shrink-0 gap-1.5 px-3 py-1.5 text-[11px] font-extrabold rounded-xl cursor-pointer transition-all duration-200 group hover:scale-[1.02] active:scale-95 text-white bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-500 shadow-md shadow-fuchsia-500/20 hover:from-purple-500 hover:via-fuchsia-500 hover:to-pink-400 hover:shadow-lg hover:shadow-fuchsia-500/30"          title="Tải & Cài đặt Extension Tiện ích Chụp ảnh công thức"
