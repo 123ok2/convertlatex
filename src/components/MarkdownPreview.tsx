@@ -458,7 +458,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
         <>
           {/* Lớp chắn cơ học chặn chuột bôi đen tiếp xúc với văn bản bên dưới, tích hợp hiệu ứng gương trượt phản chiếu */}
           <div 
-            className="absolute inset-0 z-[100] cursor-default select-none pointer-events-auto transition-all"
+            className="copy-protection-decoy absolute inset-0 z-[100] cursor-default select-none pointer-events-auto transition-all"
             style={{
               userSelect: 'none',
               WebkitUserSelect: 'none',
@@ -479,7 +479,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
           />
           {/* Lớp phản xạ siêu mỏng/mờ bổ trợ, chống các tiện ích/extension phá bẻ khóa CSS */}
           <div 
-            className="absolute inset-0 z-[101] bg-white/[0.002] cursor-default select-none pointer-events-none"
+            className="copy-protection-decoy absolute inset-0 z-[101] bg-white/[0.002] cursor-default select-none pointer-events-none"
             style={{
               userSelect: 'none',
               WebkitUserSelect: 'none',
@@ -541,7 +541,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
                   className={`text-[13pt] text-black leading-normal mb-[8pt] text-justify`}
                   style={{ 
                     fontFamily: "'Times New Roman', serif",
-                    ...(isMcq ? { paddingLeft: '24pt', textIndent: '-24pt' } : {})
+                    ...(isMcq ? { marginLeft: '24pt', textIndent: '-24pt' } : {})
                   }}
                 >
                   {protectedChildren}
@@ -552,7 +552,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
             return isMcq ? (
               <p 
                 className="text-lg text-slate-700 leading-relaxed mb-3" 
-                style={{ paddingLeft: '24pt', textIndent: '-24pt' }}
+                style={{ marginLeft: '24pt', textIndent: '-24pt' }}
               >
                 {protectedChildren}
               </p>
