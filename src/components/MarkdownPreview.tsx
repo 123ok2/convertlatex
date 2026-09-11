@@ -7,6 +7,8 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Check, FileText, Code2, Sparkles } from 'lucide-react';
 import { mml2omml } from 'mathml2omml';
+import { sanitizeOmml, decodeHtmlEntities } from '../utils/wordExport';
+import { copyHtmlAndText, copyPlainText } from '../utils/clipboard';
 import { MarkdownComponentProps } from '../types';
 
 interface MarkdownPreviewProps {
@@ -45,12 +47,13 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
       }
       processedLines.push(line);
     }
-    const preProcessedContent = processedLines.join('\n');
+    const preProcessedContent = decodeHtmlEntities(processedLines.join('\n'));
 
-    // --- STEP 1: PRE-NORMALIZE MATH DELIMITERS ---
+    // --- STEP 1: PRE-NORMALIZE MATH DELIMITERS & INTEGRAL LIMIT BARS ---
     let text = preProcessedContent
       .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$') // Chuyển \[ \] thành $$ $$
-      .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');   // Chuyển \( \) thành $ $
+      .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$')     // Chuyển \( \) thành $ $
+      .replace(/(\||\\vert|\\mid|\\Big\||\\big\||\\Bigg\||\\bigg\|)\s*\\?\s*([_\^])/g, '|$2'); // Chuẩn hóa cận tích phân Newton-Leibniz
 
     // --- STEP 2: FIX ADJACENT MATH & MULTILINE SEPARATOR ---
     text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match, inner) => {
@@ -176,7 +179,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
   }, [content]);
 
   // Xử lý sao chép công thức toán khi click trực tiếp
-  const handleFormulaClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleFormulaClick = async (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     const katexEl = target.closest('.katex');
     if (!katexEl) return;
@@ -193,38 +196,31 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
       const xmlMml = `<?xml version="1.0"?>\n${cleanMml}`;
 
       try {
-        const ommlStr = mml2omml(cleanMml);
+        const rawOmml = mml2omml(cleanMml);
+        const ommlStr = sanitizeOmml(rawOmml);
         const htmlDoc = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><head><meta charset="utf-8"></head><body><!--StartFragment-->${ommlStr}<!--EndFragment--></body></html>`;
 
-        const htmlBlob = new Blob([htmlDoc], { type: 'text/html' });
-        const textBlob = new Blob([xmlMml], { type: 'text/plain' });
-
-        navigator.clipboard.write([
-          new ClipboardItem({
-            ['text/html']: htmlBlob,
-            ['text/plain']: textBlob
-          })
-        ]).then(() => {
+        const success = await copyHtmlAndText(htmlDoc, xmlMml);
+        if (success) {
           setCopyFeedback('Đã chép công thức! Trong Word: bấm Alt + = rồi bấm Ctrl + V để hiển thị 2D chuẩn đẹp nhất.');
           setTimeout(() => setCopyFeedback(null), 4500);
-        }).catch(() => {
-          // Fallback nếu browser chặn ClipboardItem đa định dạng
-          navigator.clipboard.writeText(xmlMml).then(() => {
-            setCopyFeedback('Đã chép công thức MathML! Trong Word bấm Alt + = rồi Ctrl + V.');
-            setTimeout(() => setCopyFeedback(null), 4500);
-          });
-        });
+        } else {
+          setCopyFeedback('Không thể chép công thức. Vui lòng thử lại.');
+          setTimeout(() => setCopyFeedback(null), 3000);
+        }
       } catch (err) {
-        navigator.clipboard.writeText(xmlMml).then(() => {
+        const textSuccess = await copyPlainText(xmlMml);
+        if (textSuccess) {
           setCopyFeedback('Đã chép công thức! Trong Word bấm Alt + = rồi Ctrl + V.');
           setTimeout(() => setCopyFeedback(null), 4500);
-        });
+        }
       }
     } else if (annotationEl && annotationEl.textContent) {
-      navigator.clipboard.writeText(annotationEl.textContent).then(() => {
+      const success = await copyPlainText(annotationEl.textContent);
+      if (success) {
         setCopyFeedback(`Đã chép mã LaTeX: ${annotationEl.textContent}. Trong Word: Mở Equation > chọn LaTeX > dán > nhấn Enter!`);
         setTimeout(() => setCopyFeedback(null), 4500);
-      });
+      }
     }
   };
 

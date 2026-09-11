@@ -16,18 +16,158 @@ import {
 } from 'docx';
 
 /**
+ * Giải mã toàn diện các thực thể HTML và loại bỏ các ký tự vô hình/word joiner
+ * Giúp văn bản sao chép từ AI hoặc web như &#44;&#x2060; hiển thị thành dấu phẩy và ký tự sạch
+ */
+export function decodeHtmlEntities(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      const code = parseInt(hex, 16);
+      if (code === 0x2060 || code === 0x200b || code === 0xfeff) return '';
+      return String.fromCharCode(code);
+    })
+    .replace(/&#([0-9]+);/g, (_, dec) => {
+      const code = parseInt(dec, 10);
+      if (code === 0x2060 || code === 0x200b || code === 0xfeff) return '';
+      return String.fromCharCode(code);
+    })
+    .replace(/[\u2060\u200B\uFEFF]/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+}
+
+/**
+ * Chuẩn hóa chuỗi LaTeX trước khi biên dịch thành MathML/OMML:
+ * - Chuẩn hóa thanh cận tích phân Newton-Leibniz: | _a^b, \ | \ _a^b, \mid _a^b, \Big|_a^b thành |_a^b
+ * - Giúp KaTeX và Word nhận diện chính xác thanh gạch là cơ số của cận thay vì để cận gắn vào khoảng trắng
+ */
+export function cleanLatexString(latex: string): string {
+  if (!latex) return '';
+  let s = decodeHtmlEntities(latex).trim();
+  // Chuẩn hóa thanh cận tích phân (Newton - Leibniz): | _a^b, \ | \ _a^b, \vert _a^b...
+  s = s.replace(/(\||\\vert|\\mid|\\Big\||\\big\||\\Bigg\||\\bigg\|)\s*\\?\s*([_\^])/g, '|$2');
+  // Chuẩn hóa khoảng trắng vi phân đứng sau hàm số: f(x) dx -> f(x) \,dx
+  s = s.replace(/([^\\])\s+d([xyzut])\b/g, '$1 \\,d$2');
+  return s;
+}
+
+/**
+ * Chuẩn hóa sâu chuỗi OMML XML sinh ra từ mathml2omml:
+ * 1. Loại bỏ các thuộc tính không hợp lệ như m:val="undefined" và thẻ <m:sty/> rỗng.
+ * 2. Loại bỏ <w:rPr> bị nhúng sai bên trong <m:r> (vi phạm schema OpenXML Office Math).
+ * 3. Nếu có dấu gạch đứng | hoặc ∣ đứng ngay trước sSubSup/sSub/sSup có cơ số rỗng,
+ *    tự động gộp thanh gạch đứng vào làm cơ số m:e để tạo cận tích phân Newton-Leibniz hoàn hảo (không sinh ô vuông ⬚).
+ * 4. Chuẩn hóa n-ary operators (tích phân ∫, tổng ∑, tích ∏):
+ *    chuyển đổi m:nary thành <m:sSubSup> với toán tử là cơ số, cận dưới/trên chuẩn xác.
+ * 5. Chuẩn hóa thanh gạch cận trong sSubSup/sSub/sSup:
+ *    - Thay Unicode U+2223 (∣) bằng ASCII '|' (Cambria Math hiểu chuẩn xác 100%)
+ *    - Loại bỏ hoàn toàn m:nor (normal text mode) trong m:e vì nó khiến Word tách thanh gạch và vẽ ô vuông giữ chỗ \square.
+ * 6. Đảm bảo mọi thẻ <m:t> đều có xml:space="preserve" để không bị dính chữ.
+ */
+export function sanitizeOmml(rawOmml: string): string {
+  let xml = rawOmml;
+
+  // 1. Loại bỏ các thuộc tính rác "undefined" và thẻ style rỗng
+  xml = xml.replace(/\s*m:val="undefined"/g, '');
+  xml = xml.replace(/<m:sty\s*\/>/g, '');
+  xml = xml.replace(/<m:sty><\/m:sty>/g, '');
+
+  // 2. Loại bỏ <w:rPr> nằm trong <m:r>
+  xml = xml.replace(/<m:r>(\s*<w:rPr[^>]*>[\s\S]*?<\/w:rPr>|\s*<w:rPr\s*\/>)/g, '<m:r>');
+
+  // 3. Nếu có dấu gạch đứng | hoặc ∣ đứng ngay trước sSubSup/sSub/sSup có m:e rỗng hoặc chỉ có khoảng trắng,
+  // tự động gộp thanh gạch đứng vào làm cơ số m:e để tạo cận tích phân Newton-Leibniz hoàn hảo
+  xml = xml.replace(
+    /<m:r[^>]*>(?:<m:rPr>[\s\S]*?<\/m:rPr>)?<m:t[^>]*>[|∣]<\/m:t><\/m:r>\s*(<m:(sSubSup|sSub|sSup)>[\s\S]*?<m:e>)\s*(?:<m:r>(?:<m:rPr>[\s\S]*?<\/m:rPr>)?<m:t[^>]*>\s*<\/m:t><\/m:r>)?\s*(<\/m:e>)/g,
+    '$1<m:r><m:t xml:space="preserve">|</m:t></m:r>$3'
+  );
+
+  // 4. Chuẩn hóa m:nary (tích phân ∫, tổng ∑, tích ∏, v.v.)
+  xml = xml.replace(/<m:nary>([\s\S]*?)<\/m:nary>/g, (_match, naryBody) => {
+    const chrMatch = naryBody.match(/<m:chr\s+m:val="([^"]+)"/);
+    const chr = chrMatch ? chrMatch[1] : '∫';
+
+    const subMatch = naryBody.match(/<m:sub>([\s\S]*?)<\/m:sub>/);
+    const supMatch = naryBody.match(/<m:sup>([\s\S]*?)<\/m:sup>/);
+    const eMatch = naryBody.match(/<m:e>([\s\S]*?)<\/m:e>/);
+
+    const sub = subMatch ? subMatch[1] : '';
+    const sup = supMatch ? supMatch[1] : '';
+    let eContent = eMatch ? eMatch[1] : '';
+
+    // Nếu eContent có chữ trần chưa bọc <m:r><m:t>
+    if (eContent && !eContent.includes('<m:r>')) {
+      eContent = `<m:r><m:t xml:space="preserve">${eContent}</m:t></m:r>`;
+    } else if (eContent) {
+      eContent = eContent.replace(/(^|>)([^<]+)($|<)/g, (full, p1, txt, p3) => {
+        if (!txt.trim()) return full;
+        return `${p1}<m:r><m:t xml:space="preserve">${txt}</m:t></m:r>${p3}`;
+      });
+    }
+
+    const chrElem = `<m:e><m:r><m:t xml:space="preserve">${chr}</m:t></m:r></m:e>`;
+    let result = '';
+
+    if (sub && sup) {
+      result = `<m:sSubSup>${chrElem}<m:sub>${sub}</m:sub><m:sup>${sup}</m:sup></m:sSubSup>`;
+    } else if (sub) {
+      result = `<m:sSub>${chrElem}<m:sub>${sub}</m:sub></m:sSub>`;
+    } else if (sup) {
+      result = `<m:sSup>${chrElem}<m:sup>${sup}</m:sup></m:sSup>`;
+    } else {
+      result = `<m:r><m:t xml:space="preserve">${chr}</m:t></m:r>`;
+    }
+
+    return result + (eContent || '');
+  });
+
+  // 5. Chuẩn hóa thanh gạch cận trong sSubSup/sSub/sSup:
+  // - Thay Unicode U+2223 (∣) bằng ASCII '|' (Cambria Math hiểu chuẩn xác 100%)
+  // - Loại bỏ hoàn toàn m:nor (normal text mode) trong m:e vì nó khiến Word tách thanh gạch và vẽ ô vuông giữ chỗ \square
+  xml = xml.replace(/(<m:(sSubSup|sSub|sSup)>[\s\S]*?<m:e>)([\s\S]*?)(<\/m:e>)/g, (_m, open, _tag, body, close) => {
+    let cleanBody = body.replace(/\u2223/g, '|');
+    cleanBody = cleanBody.replace(/<m:nor\s*\/>/g, '');
+    cleanBody = cleanBody.replace(/<m:rPr>\s*<\/m:rPr>/g, '');
+    if (!cleanBody.trim() || cleanBody.includes('<m:t xml:space="preserve"></m:t>')) {
+      cleanBody = `<m:r><m:t xml:space="preserve">|</m:t></m:r>`;
+    }
+    return open + cleanBody + close;
+  });
+
+  // 6. Xóa m:nor rỗng hoặc thừa trong các biểu thức toán
+  xml = xml.replace(/<m:rPr>\s*<m:nor\s*\/>\s*<\/m:rPr>/g, '');
+
+  // 7. Khử lồng ghép thẻ trùng lặp hoặc rỗng
+  xml = xml.replace(/<m:r[^>]*>\s*<m:t[^>]*>\s*<m:r[^>]*>\s*<m:t[^>]*>([\s\S]*?)<\/m:t>\s*<\/m:r>\s*<\/m:t>\s*<\/m:r>/g, '<m:r><m:t xml:space="preserve">$1</m:t></m:r>');
+  xml = xml.replace(/<m:r[^>]*>\s*<m:t[^>]*>\s*<\/m:t>\s*<\/m:r>/g, '');
+
+  // 8. Đảm bảo toàn bộ thẻ <m:t> có thuộc tính xml:space="preserve"
+  xml = xml.replace(/<m:t(?!\s+xml:space="preserve")>/g, '<m:t xml:space="preserve">');
+
+  return xml;
+}
+
+/**
  * Chuyển đổi mã LaTeX thành component OMML của thư viện docx
  */
 export function latexToOmmlComponent(latex: string, isBlock = false): any {
   try {
-    let mml = katex.renderToString(latex, { output: 'mathml', displayMode: isBlock });
+    const cleanedLatex = cleanLatexString(latex);
+    let mml = katex.renderToString(cleanedLatex, { output: 'mathml', displayMode: isBlock });
     // Loại bỏ hoàn toàn annotation và semantics để Word không bị lặp văn bản
     mml = mml.replace(/<annotation[^>]*>[\s\S]*?<\/annotation>/gi, '').replace(/<\/?semantics>/gi, '');
     const match = mml.match(/<math[\s\S]*?<\/math>/i);
     if (!match) {
       return new TextRun({ text: latex, font: 'Cambria Math' });
     }
-    const omml = mml2omml(match[0]);
+    const rawOmml = mml2omml(match[0]);
+    const omml = sanitizeOmml(rawOmml);
     const comp = ImportedXmlComponent.fromXmlString(omml) as any;
     return comp.root && comp.root[0] ? comp.root[0] : comp;
   } catch (e) {
@@ -40,11 +180,13 @@ export function latexToOmmlComponent(latex: string, isBlock = false): any {
  */
 export function latexToOmmlXml(latex: string, isBlock = false): string {
   try {
-    let mml = katex.renderToString(latex, { output: 'mathml', displayMode: isBlock });
+    const cleanedLatex = cleanLatexString(latex);
+    let mml = katex.renderToString(cleanedLatex, { output: 'mathml', displayMode: isBlock });
     mml = mml.replace(/<annotation[^>]*>[\s\S]*?<\/annotation>/gi, '').replace(/<\/?semantics>/gi, '');
     const match = mml.match(/<math[\s\S]*?<\/math>/i);
     if (!match) return latex;
-    let omml = mml2omml(match[0]);
+    const rawOmml = mml2omml(match[0]);
+    const omml = sanitizeOmml(rawOmml);
     if (isBlock) {
       return `<p align="center" style="text-align:center;margin:12pt 0;"><m:oMathPara>${omml}</m:oMathPara></p>`;
     }
@@ -132,9 +274,10 @@ export function prepareHtmlForWord(sourceEl: HTMLElement): { fullHtml: string; c
       try {
         const cleanMml = cleanMathMlFromElement(mathEl);
         const rawOmml = mml2omml(cleanMml);
+        const sanitized = sanitizeOmml(rawOmml);
         const ommlStr = isBlock
-          ? `<p align="center" style="text-align:center;margin:12pt 0;"><m:oMathPara>${rawOmml}</m:oMathPara></p>`
-          : rawOmml;
+          ? `<p align="center" style="text-align:center;margin:12pt 0;"><m:oMathPara>${sanitized}</m:oMathPara></p>`
+          : sanitized;
 
         mathReplacements.push({ token, omml: ommlStr });
       } catch (e) {
@@ -178,12 +321,13 @@ export function prepareHtmlForWord(sourceEl: HTMLElement): { fullHtml: string; c
   });
 
   let bodyContent = clone.innerHTML;
+  bodyContent = decodeHtmlEntities(bodyContent);
   // Khôi phục chính xác các chuỗi OMML XML nguyên bản, bảo toàn 100% cú pháp PascalCase/camelCase của Office Word
   for (const { token, omml } of mathReplacements) {
     bodyContent = bodyContent.replace(token, omml);
   }
 
-  const cleanText = clone.innerText || clone.textContent || '';
+  const cleanText = decodeHtmlEntities(clone.innerText || clone.textContent || '');
 
   const fullHtml = `<!DOCTYPE html>
 <html xmlns:v='urn:schemas-microsoft-com:vml'
@@ -287,63 +431,79 @@ ${bodyContent}
 }
 
 /**
- * Phân tích văn bản nội dòng chứa công thức toán ($...$) và in đậm/nghiêng thành các TextRun / MathRun của docx
+ * Phân tích văn bản nội dòng chứa công thức toán ($...$), in đậm (**...**), in nghiêng (*...*), và mã (`...`)
+ * Hỗ trợ các cấu trúc phức tạp như in đậm bọc công thức toán (ví dụ: **Phương pháp (Đổi biến $u$)**)
  */
-function parseInlineRuns(text: string): any[] {
+export function parseInlineRuns(text: string, options: { bold?: boolean; italics?: boolean } = {}): any[] {
   const runs: any[] = [];
-  // Tách theo công thức toán inline $...$
-  const mathTokens = text.split(/(\$[^\$]+?\$)/g);
+  let remaining = decodeHtmlEntities(text);
 
-  for (let i = 0; i < mathTokens.length; i++) {
-    const token = mathTokens[i];
-    if (!token) continue;
+  while (remaining.length > 0) {
+    const boldMatch = remaining.match(/^(.*?)\*\*(.+?)\*\*/s);
+    const mathMatch = remaining.match(/^(.*?)\$([^\$]+?)\$/s);
+    const italicMatch = remaining.match(/^(.*?)(?<!\*)\*([^*]+?)\*(?!\*)/s);
+    const codeMatch = remaining.match(/^(.*?)`([^`]+?)`/s);
 
-    if (token.startsWith('$') && token.endsWith('$') && token.length > 2) {
-      const latex = token.slice(1, -1).trim();
-      runs.push(latexToOmmlComponent(latex, false));
-    } else {
-      // Phân tách in đậm **...**
-      const boldTokens = token.split(/(\*\*[^\*]+?\*\*)/g);
-      for (const bToken of boldTokens) {
-        if (!bToken) continue;
+    let earliest: { pre: string; content: string; raw: string } | null = null;
+    let type: 'bold' | 'math' | 'italic' | 'code' | null = null;
 
-        if (bToken.startsWith('**') && bToken.endsWith('**') && bToken.length > 4) {
-          const boldText = bToken.slice(2, -2);
-          runs.push(
-            new TextRun({
-              text: boldText,
-              bold: true,
-              font: 'Times New Roman',
-              size: 26, // 13pt
-            })
-          );
-        } else {
-          // Phân tách in nghiêng *...*
-          const italicTokens = bToken.split(/(\*[^\*]+?\*)/g);
-          for (const iToken of italicTokens) {
-            if (!iToken) continue;
-            if (iToken.startsWith('*') && iToken.endsWith('*') && iToken.length > 2) {
-              runs.push(
-                new TextRun({
-                  text: iToken.slice(1, -1),
-                  italics: true,
-                  font: 'Times New Roman',
-                  size: 26,
-                })
-              );
-            } else {
-              runs.push(
-                new TextRun({
-                  text: iToken,
-                  font: 'Times New Roman',
-                  size: 26,
-                })
-              );
-            }
-          }
-        }
-      }
+    if (boldMatch && (!earliest || boldMatch[1].length < earliest.pre.length)) {
+      earliest = { pre: boldMatch[1], content: boldMatch[2], raw: boldMatch[0] };
+      type = 'bold';
     }
+    if (mathMatch && (!earliest || mathMatch[1].length < earliest.pre.length)) {
+      earliest = { pre: mathMatch[1], content: mathMatch[2], raw: mathMatch[0] };
+      type = 'math';
+    }
+    if (italicMatch && (!earliest || italicMatch[1].length < earliest.pre.length)) {
+      earliest = { pre: italicMatch[1], content: italicMatch[2], raw: italicMatch[0] };
+      type = 'italic';
+    }
+    if (codeMatch && (!earliest || codeMatch[1].length < earliest.pre.length)) {
+      earliest = { pre: codeMatch[1], content: codeMatch[2], raw: codeMatch[0] };
+      type = 'code';
+    }
+
+    if (!earliest) {
+      if (remaining) {
+        runs.push(
+          new TextRun({
+            text: remaining,
+            font: 'Times New Roman',
+            size: 26, // 13pt
+            bold: options.bold || false,
+            italics: options.italics || false,
+          })
+        );
+      }
+      break;
+    }
+
+    // Xử lý chuỗi văn bản đứng trước token nếu có
+    if (earliest.pre.length > 0) {
+      runs.push(...parseInlineRuns(earliest.pre, options));
+    }
+
+    // Xử lý token theo loại
+    if (type === 'math') {
+      runs.push(latexToOmmlComponent(earliest.content, false));
+    } else if (type === 'bold') {
+      runs.push(...parseInlineRuns(earliest.content, { ...options, bold: true }));
+    } else if (type === 'italic') {
+      runs.push(...parseInlineRuns(earliest.content, { ...options, italics: true }));
+    } else if (type === 'code') {
+      runs.push(
+        new TextRun({
+          text: earliest.content,
+          font: 'Consolas',
+          size: 22,
+          bold: options.bold || false,
+          italics: options.italics || false,
+        })
+      );
+    }
+
+    remaining = remaining.slice(earliest.pre.length + earliest.raw.length - earliest.pre.length);
   }
 
   return runs;
@@ -353,7 +513,8 @@ function parseInlineRuns(text: string): any[] {
  * Tạo file Word (.docx) chuyên nghiệp với công thức OMML chuẩn gốc từ mã Markdown
  */
 export async function exportMarkdownToDocx(markdown: string, title = 'TaiLieuToan'): Promise<Blob> {
-  const lines = markdown.split(/\r?\n/);
+  const cleanMarkdown = decodeHtmlEntities(markdown);
+  const lines = cleanMarkdown.split(/\r?\n/);
   const docChildren: any[] = [];
 
   let inBlockMath = false;
@@ -433,6 +594,46 @@ export async function exportMarkdownToDocx(markdown: string, title = 'TaiLieuToa
           children: parseInlineRuns(trimmed.slice(4).trim()),
         })
       );
+    } else if (trimmed.startsWith('#### ')) {
+      docChildren.push(
+        new Paragraph({
+          heading: HeadingLevel.HEADING_4,
+          spacing: { before: 180, after: 70 },
+          children: parseInlineRuns(trimmed.slice(5).trim()),
+        })
+      );
+    } else if (trimmed.startsWith('##### ')) {
+      docChildren.push(
+        new Paragraph({
+          heading: HeadingLevel.HEADING_5,
+          spacing: { before: 160, after: 60 },
+          children: parseInlineRuns(trimmed.slice(6).trim()),
+        })
+      );
+    } else if (trimmed.startsWith('###### ')) {
+      docChildren.push(
+        new Paragraph({
+          heading: HeadingLevel.HEADING_6,
+          spacing: { before: 140, after: 50 },
+          children: parseInlineRuns(trimmed.slice(7).trim()),
+        })
+      );
+    } else if (trimmed.startsWith('**') && trimmed.endsWith('**') && trimmed.length > 4) {
+      // Dòng tiêu đề phụ / đoạn in đậm độc lập: ví dụ **Phương pháp đổi biến số (Đổi biến $u$)**
+      docChildren.push(
+        new Paragraph({
+          spacing: { before: 180, after: 80 },
+          children: parseInlineRuns(trimmed),
+        })
+      );
+    } else if (trimmed.startsWith('*') && trimmed.endsWith('*') && trimmed.length > 2 && !trimmed.startsWith('* ')) {
+      // Dòng ghi chú in nghiêng độc lập: ví dụ *Thứ tự ưu tiên chọn $u$...*
+      docChildren.push(
+        new Paragraph({
+          spacing: { before: 80, after: 80 },
+          children: parseInlineRuns(trimmed),
+        })
+      );
     } else if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
       // Danh sách gạch đầu dòng
       docChildren.push(
@@ -474,6 +675,86 @@ export async function exportMarkdownToDocx(markdown: string, title = 'TaiLieuToa
   }
 
   const doc = new Document({
+    styles: {
+      default: {
+        document: {
+          run: {
+            font: 'Times New Roman',
+            size: 26, // 13pt
+            color: '000000',
+          },
+          paragraph: {
+            spacing: { line: 360, lineRule: 'auto', before: 60, after: 120 },
+          },
+        },
+        heading1: {
+          run: {
+            font: 'Times New Roman',
+            size: 36, // 18pt
+            bold: true,
+            color: '1E3A8A',
+          },
+          paragraph: {
+            spacing: { before: 280, after: 120 },
+          },
+        },
+        heading2: {
+          run: {
+            font: 'Times New Roman',
+            size: 32, // 16pt
+            bold: true,
+            color: '1E3A8A',
+          },
+          paragraph: {
+            spacing: { before: 240, after: 100 },
+          },
+        },
+        heading3: {
+          run: {
+            font: 'Times New Roman',
+            size: 28, // 14pt
+            bold: true,
+            color: '1E3A8A',
+          },
+          paragraph: {
+            spacing: { before: 200, after: 80 },
+          },
+        },
+        heading4: {
+          run: {
+            font: 'Times New Roman',
+            size: 26, // 13pt
+            bold: true,
+            color: '1E3A8A',
+          },
+          paragraph: {
+            spacing: { before: 180, after: 70 },
+          },
+        },
+        heading5: {
+          run: {
+            font: 'Times New Roman',
+            size: 24, // 12pt
+            bold: true,
+            color: '1E3A8A',
+          },
+          paragraph: {
+            spacing: { before: 160, after: 60 },
+          },
+        },
+        heading6: {
+          run: {
+            font: 'Times New Roman',
+            size: 22, // 11pt
+            bold: true,
+            color: '1E3A8A',
+          },
+          paragraph: {
+            spacing: { before: 140, after: 50 },
+          },
+        },
+      },
+    },
     sections: [
       {
         properties: {

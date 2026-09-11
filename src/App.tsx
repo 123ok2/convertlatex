@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MarkdownPreview } from './components/MarkdownPreview';
-import { prepareHtmlForWord, exportMarkdownToDocx } from './utils/wordExport';
+import { prepareHtmlForWord, exportMarkdownToDocx, decodeHtmlEntities } from './utils/wordExport';
+import { copyHtmlAndText, copyPlainText } from './utils/clipboard';
 import { Button } from './components/Button';
 import { DrawingModal } from './components/DrawingModal';
 import { Toolbar } from './components/Toolbar';
@@ -92,7 +93,8 @@ const generateFingerprint = () => {
  * BỘ LỌC TOÁN HỌC TỰ ĐỘNG (DÀNH CHO NHẬP LIỆU TRỰC TIẾP)
  */
 const autoFormatMath = (text: string): string => {
-  const lines = text.split('\n');
+  const cleanText = decodeHtmlEntities(text);
+  const lines = cleanText.split('\n');
   let inMathBlock = false;
   const formattedLines = lines.map(line => {
     const trimmed = line.trim();
@@ -108,6 +110,9 @@ const autoFormatMath = (text: string): string => {
     
     let p = line;
     
+    // Chuẩn hóa cận tích phân Newton-Leibniz: |_a^b
+    p = p.replace(/(\||\\vert|\\mid|\\Big\||\\big\||\\Bigg\||\\bigg\|)\s*\\?\s*([_\^])/g, '|$2');
+
     // Xử lý các tiền tố hóa học/toán học phổ biến
     p = p.replace(/∫(\w)(\w)\s?([^=\n]+)/g, "\\int_{$1}^{$2} $3");
     p = p.replace(/√(\w)/g, "\\sqrt{$1}").replace(/√\(([^)]+)\)/g, "\\sqrt{$1}");
@@ -133,7 +138,10 @@ const autoFormatMath = (text: string): string => {
  * TỰ ĐỘNG DỊCH VÀ CHUẨN HÓA VĂN BẢN TOÁN HỌC (TỪ AI HOẶC TEXT THÔ)
  */
 const formatAiPastedContent = (text: string): string => {
-  let p = text;
+  let p = decodeHtmlEntities(text);
+
+  // Chuẩn hóa cận tích phân Newton-Leibniz dạng |_a^b, \Big|_a^b, | _a^b...
+  p = p.replace(/(\||\\vert|\\mid|\\Big\||\\big\||\\Bigg\||\\bigg\|)\s*\\?\s*([_\^])/g, '|$2');
 
   // 1. Chuẩn hóa định dạng của AI: \( \) -> $ $ và \[ \] -> $$ $$
   p = p.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
@@ -999,8 +1007,8 @@ export default function App() {
                   <code className="text-red-600 font-mono select-all font-semibold overflow-x-auto truncate text-[10px] block max-w-[180px]">{unauthorizedDomainError}</code>
                   <button
                     type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(unauthorizedDomainError);
+                    onClick={async () => {
+                      await copyPlainText(unauthorizedDomainError);
                       setToast({ message: "Đã sao chép tên miền!", type: 'success' });
                     }}
                     className="shrink-0 bg-slate-100 hover:bg-slate-200 text-[9px] font-extrabold px-2 py-1 rounded text-slate-700 active:scale-95 transition-all"
@@ -1189,7 +1197,7 @@ export default function App() {
                     <div className="space-y-2">
                        <div className="flex flex-col gap-1">
                           <label className="text-[10px] font-black text-slate-400 uppercase ml-1">ID Tài khoản</label>
-                          <div onClick={() => { navigator.clipboard.writeText(user.uid); setToast({ message: "Đã copy ID", type: 'success' }); }} className="flex items-center justify-between gap-2 text-slate-600 text-[11px] font-mono bg-white p-2 rounded-xl border border-indigo-50 cursor-pointer hover:bg-indigo-100/50 transition-colors">
+                          <div onClick={async () => { await copyPlainText(user.uid); setToast({ message: "Đã copy ID", type: 'success' }); }} className="flex items-center justify-between gap-2 text-slate-600 text-[11px] font-mono bg-white p-2 rounded-xl border border-indigo-50 cursor-pointer hover:bg-indigo-100/50 transition-colors">
                             <span className="truncate">{user.uid}</span>
                             <CopyIcon size={12} className="text-slate-400" />
                           </div>
@@ -1221,26 +1229,24 @@ export default function App() {
         onCopyFormatted={async () => {
           const previewEl = document.getElementById('markdown-preview-content');
           if (!previewEl) return;
+          if (credits !== null && credits <= 0) {
+            setShowCreditAlert(true);
+            return;
+          }
           try {
-             if (await deductCredit()) {
-                const { fullHtml, cleanText } = prepareHtmlForWord(previewEl);
-                
-                const blob = new Blob([fullHtml], { type: "text/html" });
-                const textBlob = new Blob([cleanText], { type: "text/plain" });
-                
-                window.focus();
-                
-                await navigator.clipboard.write([
-                  new ClipboardItem({ 
-                    ["text/html"]: blob,
-                    ["text/plain"]: textBlob
-                  })
-                ]);
-                setToast({ message: "✅ Đã sao chép chuẩn Word! Dán (Ctrl+V) vào Word sẽ hiển thị công thức chuẩn đẹp, không bị lặp chữ.", type: 'success' });
-             }
+            const { fullHtml, cleanText } = prepareHtmlForWord(previewEl);
+            const success = await copyHtmlAndText(fullHtml, cleanText);
+            
+            if (success) {
+              // Khấu trừ lượt dùng sau khi sao chép thành công
+              deductCredit().catch(err => console.warn('Credit deduction error:', err));
+              setToast({ message: "✅ Đã sao chép chuẩn Word! Dán (Ctrl+V) vào Word sẽ hiển thị công thức chuẩn đẹp, không bị lặp chữ.", type: 'success' });
+            } else {
+              setToast({ message: "❌ Không thể sao chép: Vui lòng nhấp chuột vào trang trước khi nhấn Copy", type: 'error' });
+            }
           } catch (err: any) {
              console.error('Clipboard error:', err);
-             setToast({ message: "❌ Lỗi sao chép: Vui lòng tương tác với trang web trước khi nhấn Copy", type: 'error' });
+             setToast({ message: "❌ Lỗi sao chép: " + (err?.message || "Vui lòng thử lại"), type: 'error' });
           }
         }} 
         onExportWord={async () => {
@@ -1315,8 +1321,9 @@ export default function App() {
             // TỰ ĐỘNG DỊCH LATEX KHI DÁN KỂ CẢ TỪ AI (KHÔNG TỐN CREDIT)
             onPaste={(e) => {
               const pastedData = e.clipboardData.getData('text');
+              const hasEntities = /&#x?[0-9a-fA-F]+;|[\u2060\u200B\uFEFF]/.test(pastedData);
               const aiAiMathRegex = /[∫√∞πΔ±≤≥≠≈×÷′\\]|\\\[|\\\(|\$\$/;
-              if (aiAiMathRegex.test(pastedData) || pastedData.includes('\\[') || pastedData.includes('\\(')) {
+              if (hasEntities || aiAiMathRegex.test(pastedData) || pastedData.includes('\\[') || pastedData.includes('\\(')) {
                 e.preventDefault();
                 const formatted = formatAiPastedContent(pastedData);
                 insertTextAtCursor(formatted);
@@ -1590,8 +1597,8 @@ export default function App() {
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Toàn bộ Security Rules mới (Đã sửa đổi công khai phần statistics):</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(`rules_version = '2';
+                    onClick={async () => {
+                      await copyPlainText(`rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
