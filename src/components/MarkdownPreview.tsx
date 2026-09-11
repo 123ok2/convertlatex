@@ -5,7 +5,8 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Check, FileText, Code2 } from 'lucide-react';
+import { Copy, Check, FileText, Code2, Sparkles } from 'lucide-react';
+import { mml2omml } from 'mathml2omml';
 import { MarkdownComponentProps } from '../types';
 
 interface MarkdownPreviewProps {
@@ -188,16 +189,41 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content, previ
       // Chuẩn hóa MathML: bỏ annotation để Word không lặp chữ
       const cloneMath = mathEl.cloneNode(true) as Element;
       cloneMath.querySelectorAll('annotation').forEach(el => el.remove());
-      const mathMlStr = cloneMath.outerHTML;
+      const cleanMml = cloneMath.outerHTML;
+      const xmlMml = `<?xml version="1.0"?>\n${cleanMml}`;
 
-      navigator.clipboard.writeText(mathMlStr).then(() => {
-        setCopyFeedback('Đã chép công thức MathML cho Word! Dán trực tiếp (hoặc bấm Alt+= rồi dán) vào Word.');
-        setTimeout(() => setCopyFeedback(null), 3500);
-      });
+      try {
+        const ommlStr = mml2omml(cleanMml);
+        const htmlDoc = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><head><meta charset="utf-8"></head><body><!--StartFragment-->${ommlStr}<!--EndFragment--></body></html>`;
+
+        const htmlBlob = new Blob([htmlDoc], { type: 'text/html' });
+        const textBlob = new Blob([xmlMml], { type: 'text/plain' });
+
+        navigator.clipboard.write([
+          new ClipboardItem({
+            ['text/html']: htmlBlob,
+            ['text/plain']: textBlob
+          })
+        ]).then(() => {
+          setCopyFeedback('Đã chép công thức! Trong Word: bấm Alt + = rồi bấm Ctrl + V để hiển thị 2D chuẩn đẹp nhất.');
+          setTimeout(() => setCopyFeedback(null), 4500);
+        }).catch(() => {
+          // Fallback nếu browser chặn ClipboardItem đa định dạng
+          navigator.clipboard.writeText(xmlMml).then(() => {
+            setCopyFeedback('Đã chép công thức MathML! Trong Word bấm Alt + = rồi Ctrl + V.');
+            setTimeout(() => setCopyFeedback(null), 4500);
+          });
+        });
+      } catch (err) {
+        navigator.clipboard.writeText(xmlMml).then(() => {
+          setCopyFeedback('Đã chép công thức! Trong Word bấm Alt + = rồi Ctrl + V.');
+          setTimeout(() => setCopyFeedback(null), 4500);
+        });
+      }
     } else if (annotationEl && annotationEl.textContent) {
       navigator.clipboard.writeText(annotationEl.textContent).then(() => {
-        setCopyFeedback(`Đã chép mã LaTeX: ${annotationEl.textContent}`);
-        setTimeout(() => setCopyFeedback(null), 3500);
+        setCopyFeedback(`Đã chép mã LaTeX: ${annotationEl.textContent}. Trong Word: Mở Equation > chọn LaTeX > dán > nhấn Enter!`);
+        setTimeout(() => setCopyFeedback(null), 4500);
       });
     }
   };

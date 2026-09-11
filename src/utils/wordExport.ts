@@ -119,37 +119,45 @@ export function prepareHtmlForWord(sourceEl: HTMLElement): { fullHtml: string; c
   // 3. XÓA BỎ TOÀN BỘ THẺ ANNOTATION (Nguyên nhân chính gây lỗi lặp chữ)
   clone.querySelectorAll('annotation').forEach(el => el.remove());
 
-  // 4. Chuyển đổi các công thức .katex thành OMML chuẩn của Word
+  // 4. Chuyển đổi các công thức .katex thành OMML chuẩn của Word với cơ chế Token để giữ nguyên chữ hoa/thường (m:oMath, m:fPr...)
+  const mathReplacements: { token: string; omml: string }[] = [];
   const katexElements = Array.from(clone.querySelectorAll('.katex'));
-  for (const el of katexElements) {
+
+  katexElements.forEach((el, index) => {
     const isBlock = el.closest('.katex-display') !== null;
     const mathEl = el.querySelector('math');
+    const token = `__WORD_OMML_MATH_TOKEN_${index}__`;
+
     if (mathEl) {
       try {
         const cleanMml = cleanMathMlFromElement(mathEl);
-        const omml = mml2omml(cleanMml);
-        const temp = document.createElement('div');
-        if (isBlock) {
-          temp.innerHTML = `<p align="center" style="text-align:center;margin:12pt 0;"><m:oMathPara>${omml}</m:oMathPara></p>`;
-          const displayParent = el.closest('.katex-display');
-          if (displayParent) {
-            displayParent.replaceWith(...temp.childNodes);
-          } else {
-            el.replaceWith(...temp.childNodes);
-          }
-        } else {
-          temp.innerHTML = omml;
-          el.replaceWith(...temp.childNodes);
-        }
+        const rawOmml = mml2omml(cleanMml);
+        const ommlStr = isBlock
+          ? `<p align="center" style="text-align:center;margin:12pt 0;"><m:oMathPara>${rawOmml}</m:oMathPara></p>`
+          : rawOmml;
+
+        mathReplacements.push({ token, omml: ommlStr });
       } catch (e) {
-        // Fallback: giữ mathml sạch
         const cleanMml = cleanMathMlFromElement(mathEl);
-        const temp = document.createElement('span');
-        temp.innerHTML = cleanMml;
-        el.replaceWith(temp);
+        mathReplacements.push({ token, omml: cleanMml });
       }
+    } else {
+      mathReplacements.push({ token, omml: el.textContent || '' });
     }
-  }
+
+    const tokenSpan = document.createElement('span');
+    tokenSpan.textContent = token;
+    if (isBlock) {
+      const displayParent = el.closest('.katex-display');
+      if (displayParent) {
+        displayParent.replaceWith(tokenSpan);
+      } else {
+        el.replaceWith(tokenSpan);
+      }
+    } else {
+      el.replaceWith(tokenSpan);
+    }
+  });
 
   // 5. Chuẩn hóa khoảng trắng để văn bản không bị dính chữ
   normalizeSpacesInClone(clone);
@@ -169,13 +177,19 @@ export function prepareHtmlForWord(sourceEl: HTMLElement): { fullHtml: string; c
     (cell as HTMLElement).style.padding = '6pt';
   });
 
-  const bodyContent = clone.innerHTML;
+  let bodyContent = clone.innerHTML;
+  // Khôi phục chính xác các chuỗi OMML XML nguyên bản, bảo toàn 100% cú pháp PascalCase/camelCase của Office Word
+  for (const { token, omml } of mathReplacements) {
+    bodyContent = bodyContent.replace(token, omml);
+  }
+
   const cleanText = clone.innerText || clone.textContent || '';
 
   const fullHtml = `<!DOCTYPE html>
-<html xmlns:o='urn:schemas-microsoft-com:office:office' 
+<html xmlns:v='urn:schemas-microsoft-com:vml'
+      xmlns:o='urn:schemas-microsoft-com:office:office' 
       xmlns:w='urn:schemas-microsoft-com:office:word' 
-      xmlns:m='http://schemas.microsoft.com/office/2004/12/omml' 
+      xmlns:m='http://schemas.openxmlformats.org/officeDocument/2006/math' 
       xmlns='http://www.w3.org/TR/REC-html40'>
 <head>
   <meta charset="utf-8">
@@ -184,6 +198,7 @@ export function prepareHtmlForWord(sourceEl: HTMLElement): { fullHtml: string; c
   <xml>
     <w:WordDocument>
       <w:View>Print</w:View>
+      <w:Zoom>100</w:Zoom>
       <w:DoNotOptimizeForBrowser/>
     </w:WordDocument>
   </xml>
@@ -201,6 +216,13 @@ export function prepareHtmlForWord(sourceEl: HTMLElement): { fullHtml: string; c
       margin-top: 0;
       margin-bottom: 8pt;
       text-align: justify;
+    }
+    m\\:oMath {
+      font-family: 'Cambria Math', serif;
+    }
+    m\\:oMathPara {
+      text-align: center;
+      margin: 12pt 0;
     }
     h1 {
       font-size: 18pt;
@@ -252,18 +274,12 @@ export function prepareHtmlForWord(sourceEl: HTMLElement): { fullHtml: string; c
       color: #475569;
       font-style: italic;
     }
-    /* Đảm bảo công thức toán OMML hiển thị đẹp trong Word */
-    m\\:oMath {
-      font-family: 'Cambria Math', serif;
-    }
-    m\\:oMathPara {
-      text-align: center;
-      margin: 10pt 0;
-    }
   </style>
 </head>
 <body>
-  ${bodyContent}
+<!--StartFragment-->
+${bodyContent}
+<!--EndFragment-->
 </body>
 </html>`;
 
