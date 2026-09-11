@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MarkdownPreview } from './components/MarkdownPreview';
+import { prepareHtmlForWord, exportMarkdownToDocx } from './utils/wordExport';
 import { Button } from './components/Button';
 import { DrawingModal } from './components/DrawingModal';
 import { Toolbar } from './components/Toolbar';
@@ -1222,80 +1223,10 @@ export default function App() {
           if (!previewEl) return;
           try {
              if (await deductCredit()) {
-                const clone = previewEl.cloneNode(true) as HTMLElement;
-                
-                // Xóa các thẻ tàng hình chống sao chép bằng tiện ích trước khi dọn dẹp các thẻ khác
-                clone.querySelectorAll('.copy-protection-decoy').forEach(el => el.remove());
-                
-                // 1. Dọn dẹp: Xóa phần KaTeX HTML thừa
-                clone.querySelectorAll('.katex-html').forEach(el => el.remove());
-                
-                // Sửa lỗi dính chữ và khoảng trắng trùng lặp trước/sau khi dọn dẹp KaTeX HTML
-                normalizeSpacesInClone(clone);
-                
-                // 2. Tối ưu MathML cho Word: Phân biệt inline và block
-                clone.querySelectorAll('.katex-mathml').forEach(el => {
-                  const isBlock = el.closest('.katex-display') !== null;
-                  const style = (el as HTMLElement).style;
-                  style.display = isBlock ? 'block' : 'inline';
-                  style.clip = 'auto';
-                  style.height = 'auto';
-                  style.width = 'auto';
-                  style.overflow = 'visible';
-                  if (isBlock) {
-                    style.textAlign = 'center';
-                    style.margin = '10pt 0';
-                  }
-                });
-
-                // 3. Xóa các class Tailwind hiệu năng cao bằng cách chỉ nhắm mục tiêu phần tử có class
-                clone.querySelectorAll('[class]').forEach(el => {
-                    el.removeAttribute('class');
-                });
-                
-                // Word ưu tiên thuộc tính style trực tiếp
-                clone.querySelectorAll('table').forEach(el => {
-                    const tableEl = el as HTMLElement;
-                    tableEl.style.borderCollapse = 'collapse';
-                    tableEl.style.width = '100%';
-                    tableEl.style.border = '1px solid black';
-                });
-                
-                clone.querySelectorAll('td, th').forEach(el => {
-                    const cellEl = el as HTMLElement;
-                    cellEl.style.border = '1px solid black';
-                    cellEl.style.padding = '5pt';
-                });
-                
-                const fullHtml = `
-                  <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-                  <head>
-                    <meta charset='utf-8'>
-                    <!--[if gte mso 9]>
-                    <xml>
-                      <w:WordDocument>
-                        <w:View>Print</w:View>
-                        <w:DoNotOptimizeForBrowser/>
-                      </w:WordDocument>
-                    </xml>
-                    <![endif]-->
-                    <style>
-                      body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; color: black; }
-                      h1 { font-size: 18pt; color: #1e40af; font-weight: bold; }
-                      h2 { font-size: 16pt; color: #1e40af; font-weight: bold; }
-                      h3 { font-size: 14pt; color: #1e40af; font-weight: bold; }
-                      p { margin-bottom: 10pt; }
-                      table { margin-bottom: 15pt; }
-                    </style>
-                  </head>
-                  <body>
-                    ${clone.innerHTML}
-                  </body>
-                  </html>
-                `;
+                const { fullHtml, cleanText } = prepareHtmlForWord(previewEl);
                 
                 const blob = new Blob([fullHtml], { type: "text/html" });
-                const textBlob = new Blob([clone.innerText], { type: "text/plain" });
+                const textBlob = new Blob([cleanText], { type: "text/plain" });
                 
                 window.focus();
                 
@@ -1305,7 +1236,7 @@ export default function App() {
                     ["text/plain"]: textBlob
                   })
                 ]);
-                setToast({ message: "✅ Đã sao chép định dạng tối ưu cho Word!", type: 'success' });
+                setToast({ message: "✅ Đã sao chép chuẩn Word! Dán (Ctrl+V) vào Word sẽ hiển thị công thức chuẩn đẹp, không bị lặp chữ.", type: 'success' });
              }
           } catch (err: any) {
              console.error('Clipboard error:', err);
@@ -1316,88 +1247,44 @@ export default function App() {
           const previewEl = document.getElementById('markdown-preview-content');
           if (!previewEl) return;
           try {
-             // 1. Chuyển trạng thái sang Đang định dạng
              setWordExportState('preparing');
              
              if (await deductCredit()) {
-                // Tăng nhẹ thời gian chờ để người dùng cảm thấy có tiến trình xử lý thực sự
-                await new Promise(resolve => setTimeout(resolve, 800));
-
-                const clone = previewEl.cloneNode(true) as HTMLElement;
-                
-                // Xóa các thẻ tàng hình chống sao chép bằng tiện ích trước khi dọn dẹp các thẻ khác
-                clone.querySelectorAll('.copy-protection-decoy').forEach(el => el.remove());
-                
-                // Dọn dẹp MathJax/KaTeX
-                clone.querySelectorAll('.katex-html').forEach(el => el.remove());
-                
-                // Sửa lỗi dính chữ và khoảng trắng trùng lặp trước/sau khi dọn dẹp KaTeX HTML
-                normalizeSpacesInClone(clone);
-                clone.querySelectorAll('.katex-mathml').forEach(el => {
-                   const isBlock = el.closest('.katex-display') !== null;
-                   const style = (el as HTMLElement).style;
-                   style.display = isBlock ? 'block' : 'inline';
-                   style.clip = 'auto';
-                   style.height = 'auto';
-                   style.width = 'auto';
-                   style.overflow = 'visible';
-                   if (isBlock) {
-                       style.textAlign = 'center';
-                       style.margin = '12pt 0';
-                   }
-                });
-
-                // Xóa Tailwind classes
-                clone.querySelectorAll('[class]').forEach(el => {
-                    el.removeAttribute('class');
-                });
-                clone.querySelectorAll('table').forEach(el => {
-                    (el as HTMLElement).style.borderCollapse = 'collapse';
-                });
-
-                const fullHtml = `
-                  <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-                  <head>
-                    <meta charset='utf-8'>
-                    <!--[if gte mso 9]>
-                    <xml>
-                      <w:WordDocument>
-                        <w:View>Print</w:View>
-                      </w:WordDocument>
-                    </xml>
-                    <![endif]-->
-                    <style>
-                      body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; color: black; }
-                      table { border: 1px solid black; border-collapse: collapse; width: 100%; }
-                      th, td { border: 1px solid black; padding: 5pt; }
-                      h1, h2, h3 { color: #1e40af; font-weight: bold; }
-                    </style>
-                  </head>
-                  <body>
-                    ${clone.innerHTML}
-                  </body>
-                  </html>
-                `;
-
-                // 2. Chuyển sang đóng gói dữ liệu
+                await new Promise(resolve => setTimeout(resolve, 500));
                 setWordExportState('packaging');
-                await new Promise(resolve => setTimeout(resolve, 900));
 
-                const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
-                const url = URL.createObjectURL(blob);
-                
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `Document_${Date.now()}.doc`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-                // Cho trình duyệt thời gian đẩy tệp thực sự lên đĩa/hiển thị thanh công cụ tải xuống
-                setTimeout(() => {
-                   URL.revokeObjectURL(url);
-                   setWordExportState('success');
-                }, 1400);
+                const textToExport = previewContent || content;
+                try {
+                  const docxBlob = await exportMarkdownToDocx(textToExport);
+                  const url = URL.createObjectURL(docxBlob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = `TaiLieu_CongThuc_${Date.now()}.docx`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  
+                  setTimeout(() => {
+                     URL.revokeObjectURL(url);
+                     setWordExportState('success');
+                     setToast({ message: "✅ Đã xuất tệp Word (.docx) thành công! Mở trong Word sẽ thấy công thức chuẩn.", type: 'success' });
+                  }, 1200);
+                } catch (docxErr) {
+                  console.warn('DOCX export error, falling back to HTML Word doc:', docxErr);
+                  const { fullHtml } = prepareHtmlForWord(previewEl);
+                  const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = `Document_${Date.now()}.doc`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  setTimeout(() => {
+                     URL.revokeObjectURL(url);
+                     setWordExportState('success');
+                  }, 1200);
+                }
              } else {
                 setWordExportState('idle');
              }

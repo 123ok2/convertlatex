@@ -103,8 +103,8 @@ async function startServer() {
       };
       
       const result = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: { parts: [imagePart, textPart] }
+        model: "gemini-3.8-flash",
+        contents: [imagePart, textPart]
       });
       res.json({ text: result.text || "" });
     } catch (err: any) {

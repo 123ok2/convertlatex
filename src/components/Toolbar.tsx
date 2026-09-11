@@ -141,7 +141,7 @@ className="flex items-center shrink-0 gap-1.5 px-3 py-1.5 text-[11px] font-extra
           type="button"
           onClick={onExportWord}
           className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition-all cursor-pointer active:scale-95"
-          title="Tải file Word (.doc)"
+          title="Tải file Word (.docx)"
         >
           <FileDown size={19} className="stroke-[2.0]" />
         </button>
