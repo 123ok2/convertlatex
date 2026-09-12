@@ -1,7 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MarkdownPreview } from './components/MarkdownPreview';
-import { prepareHtmlForWord, exportMarkdownToDocx, decodeHtmlEntities } from './utils/wordExport';
-import { copyHtmlAndText, copyPlainText } from './utils/clipboard';
 import { Button } from './components/Button';
 import { DrawingModal } from './components/DrawingModal';
 import { Toolbar } from './components/Toolbar';
@@ -93,8 +91,7 @@ const generateFingerprint = () => {
  * BỘ LỌC TOÁN HỌC TỰ ĐỘNG (DÀNH CHO NHẬP LIỆU TRỰC TIẾP)
  */
 const autoFormatMath = (text: string): string => {
-  const cleanText = decodeHtmlEntities(text);
-  const lines = cleanText.split('\n');
+  const lines = text.split('\n');
   let inMathBlock = false;
   const formattedLines = lines.map(line => {
     const trimmed = line.trim();
@@ -110,9 +107,6 @@ const autoFormatMath = (text: string): string => {
     
     let p = line;
     
-    // Chuẩn hóa cận tích phân Newton-Leibniz: |_a^b
-    p = p.replace(/(\||\\vert|\\mid|\\Big\||\\big\||\\Bigg\||\\bigg\|)\s*\\?\s*([_\^])/g, '|$2');
-
     // Xử lý các tiền tố hóa học/toán học phổ biến
     p = p.replace(/∫(\w)(\w)\s?([^=\n]+)/g, "\\int_{$1}^{$2} $3");
     p = p.replace(/√(\w)/g, "\\sqrt{$1}").replace(/√\(([^)]+)\)/g, "\\sqrt{$1}");
@@ -138,10 +132,7 @@ const autoFormatMath = (text: string): string => {
  * TỰ ĐỘNG DỊCH VÀ CHUẨN HÓA VĂN BẢN TOÁN HỌC (TỪ AI HOẶC TEXT THÔ)
  */
 const formatAiPastedContent = (text: string): string => {
-  let p = decodeHtmlEntities(text);
-
-  // Chuẩn hóa cận tích phân Newton-Leibniz dạng |_a^b, \Big|_a^b, | _a^b...
-  p = p.replace(/(\||\\vert|\\mid|\\Big\||\\big\||\\Bigg\||\\bigg\|)\s*\\?\s*([_\^])/g, '|$2');
+  let p = text;
 
   // 1. Chuẩn hóa định dạng của AI: \( \) -> $ $ và \[ \] -> $$ $$
   p = p.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
@@ -1007,8 +998,8 @@ export default function App() {
                   <code className="text-red-600 font-mono select-all font-semibold overflow-x-auto truncate text-[10px] block max-w-[180px]">{unauthorizedDomainError}</code>
                   <button
                     type="button"
-                    onClick={async () => {
-                      await copyPlainText(unauthorizedDomainError);
+                    onClick={() => {
+                      navigator.clipboard.writeText(unauthorizedDomainError);
                       setToast({ message: "Đã sao chép tên miền!", type: 'success' });
                     }}
                     className="shrink-0 bg-slate-100 hover:bg-slate-200 text-[9px] font-extrabold px-2 py-1 rounded text-slate-700 active:scale-95 transition-all"
@@ -1197,7 +1188,7 @@ export default function App() {
                     <div className="space-y-2">
                        <div className="flex flex-col gap-1">
                           <label className="text-[10px] font-black text-slate-400 uppercase ml-1">ID Tài khoản</label>
-                          <div onClick={async () => { await copyPlainText(user.uid); setToast({ message: "Đã copy ID", type: 'success' }); }} className="flex items-center justify-between gap-2 text-slate-600 text-[11px] font-mono bg-white p-2 rounded-xl border border-indigo-50 cursor-pointer hover:bg-indigo-100/50 transition-colors">
+                          <div onClick={() => { navigator.clipboard.writeText(user.uid); setToast({ message: "Đã copy ID", type: 'success' }); }} className="flex items-center justify-between gap-2 text-slate-600 text-[11px] font-mono bg-white p-2 rounded-xl border border-indigo-50 cursor-pointer hover:bg-indigo-100/50 transition-colors">
                             <span className="truncate">{user.uid}</span>
                             <CopyIcon size={12} className="text-slate-400" />
                           </div>
@@ -1229,68 +1220,184 @@ export default function App() {
         onCopyFormatted={async () => {
           const previewEl = document.getElementById('markdown-preview-content');
           if (!previewEl) return;
-          if (credits !== null && credits <= 0) {
-            setShowCreditAlert(true);
-            return;
-          }
           try {
-            const { fullHtml, cleanText } = prepareHtmlForWord(previewEl);
-            const success = await copyHtmlAndText(fullHtml, cleanText);
-            
-            if (success) {
-              // Khấu trừ lượt dùng sau khi sao chép thành công
-              deductCredit().catch(err => console.warn('Credit deduction error:', err));
-              setToast({ message: "✅ Đã sao chép chuẩn Word! Dán (Ctrl+V) vào Word sẽ hiển thị công thức chuẩn đẹp, không bị lặp chữ.", type: 'success' });
-            } else {
-              setToast({ message: "❌ Không thể sao chép: Vui lòng nhấp chuột vào trang trước khi nhấn Copy", type: 'error' });
-            }
+             if (await deductCredit()) {
+                const clone = previewEl.cloneNode(true) as HTMLElement;
+                
+                // Xóa các thẻ tàng hình chống sao chép bằng tiện ích trước khi dọn dẹp các thẻ khác
+                clone.querySelectorAll('.copy-protection-decoy').forEach(el => el.remove());
+                
+                // 1. Dọn dẹp: Xóa phần KaTeX HTML thừa
+                clone.querySelectorAll('.katex-html').forEach(el => el.remove());
+                
+                // Sửa lỗi dính chữ và khoảng trắng trùng lặp trước/sau khi dọn dẹp KaTeX HTML
+                normalizeSpacesInClone(clone);
+                
+                // 2. Tối ưu MathML cho Word: Phân biệt inline và block
+                clone.querySelectorAll('.katex-mathml').forEach(el => {
+                  const isBlock = el.closest('.katex-display') !== null;
+                  const style = (el as HTMLElement).style;
+                  style.display = isBlock ? 'block' : 'inline';
+                  style.clip = 'auto';
+                  style.height = 'auto';
+                  style.width = 'auto';
+                  style.overflow = 'visible';
+                  if (isBlock) {
+                    style.textAlign = 'center';
+                    style.margin = '10pt 0';
+                  }
+                });
+
+                // 3. Xóa các class Tailwind hiệu năng cao bằng cách chỉ nhắm mục tiêu phần tử có class
+                clone.querySelectorAll('[class]').forEach(el => {
+                    el.removeAttribute('class');
+                });
+                
+                // Word ưu tiên thuộc tính style trực tiếp
+                clone.querySelectorAll('table').forEach(el => {
+                    const tableEl = el as HTMLElement;
+                    tableEl.style.borderCollapse = 'collapse';
+                    tableEl.style.width = '100%';
+                    tableEl.style.border = '1px solid black';
+                });
+                
+                clone.querySelectorAll('td, th').forEach(el => {
+                    const cellEl = el as HTMLElement;
+                    cellEl.style.border = '1px solid black';
+                    cellEl.style.padding = '5pt';
+                });
+                
+                const fullHtml = `
+                  <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+                  <head>
+                    <meta charset='utf-8'>
+                    <!--[if gte mso 9]>
+                    <xml>
+                      <w:WordDocument>
+                        <w:View>Print</w:View>
+                        <w:DoNotOptimizeForBrowser/>
+                      </w:WordDocument>
+                    </xml>
+                    <![endif]-->
+                    <style>
+                      body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; color: black; }
+                      h1 { font-size: 18pt; color: #1e40af; font-weight: bold; }
+                      h2 { font-size: 16pt; color: #1e40af; font-weight: bold; }
+                      h3 { font-size: 14pt; color: #1e40af; font-weight: bold; }
+                      p { margin-bottom: 10pt; }
+                      table { margin-bottom: 15pt; }
+                    </style>
+                  </head>
+                  <body>
+                    ${clone.innerHTML}
+                  </body>
+                  </html>
+                `;
+                
+                const blob = new Blob([fullHtml], { type: "text/html" });
+                const textBlob = new Blob([clone.innerText], { type: "text/plain" });
+                
+                window.focus();
+                
+                await navigator.clipboard.write([
+                  new ClipboardItem({ 
+                    ["text/html"]: blob,
+                    ["text/plain"]: textBlob
+                  })
+                ]);
+                setToast({ message: "✅ Đã sao chép định dạng tối ưu cho Word!", type: 'success' });
+             }
           } catch (err: any) {
              console.error('Clipboard error:', err);
-             setToast({ message: "❌ Lỗi sao chép: " + (err?.message || "Vui lòng thử lại"), type: 'error' });
+             setToast({ message: "❌ Lỗi sao chép: Vui lòng tương tác với trang web trước khi nhấn Copy", type: 'error' });
           }
         }} 
         onExportWord={async () => {
           const previewEl = document.getElementById('markdown-preview-content');
           if (!previewEl) return;
           try {
+             // 1. Chuyển trạng thái sang Đang định dạng
              setWordExportState('preparing');
              
              if (await deductCredit()) {
-                await new Promise(resolve => setTimeout(resolve, 500));
-                setWordExportState('packaging');
+                // Tăng nhẹ thời gian chờ để người dùng cảm thấy có tiến trình xử lý thực sự
+                await new Promise(resolve => setTimeout(resolve, 800));
 
-                const textToExport = previewContent || content;
-                try {
-                  const docxBlob = await exportMarkdownToDocx(textToExport);
-                  const url = URL.createObjectURL(docxBlob);
-                  const link = document.createElement('a');
-                  link.href = url;
-                  link.download = `TaiLieu_CongThuc_${Date.now()}.docx`;
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                  
-                  setTimeout(() => {
-                     URL.revokeObjectURL(url);
-                     setWordExportState('success');
-                     setToast({ message: "✅ Đã xuất tệp Word (.docx) thành công! Mở trong Word sẽ thấy công thức chuẩn.", type: 'success' });
-                  }, 1200);
-                } catch (docxErr) {
-                  console.warn('DOCX export error, falling back to HTML Word doc:', docxErr);
-                  const { fullHtml } = prepareHtmlForWord(previewEl);
-                  const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
-                  const url = URL.createObjectURL(blob);
-                  const link = document.createElement('a');
-                  link.href = url;
-                  link.download = `Document_${Date.now()}.doc`;
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                  setTimeout(() => {
-                     URL.revokeObjectURL(url);
-                     setWordExportState('success');
-                  }, 1200);
-                }
+                const clone = previewEl.cloneNode(true) as HTMLElement;
+                
+                // Xóa các thẻ tàng hình chống sao chép bằng tiện ích trước khi dọn dẹp các thẻ khác
+                clone.querySelectorAll('.copy-protection-decoy').forEach(el => el.remove());
+                
+                // Dọn dẹp MathJax/KaTeX
+                clone.querySelectorAll('.katex-html').forEach(el => el.remove());
+                
+                // Sửa lỗi dính chữ và khoảng trắng trùng lặp trước/sau khi dọn dẹp KaTeX HTML
+                normalizeSpacesInClone(clone);
+                clone.querySelectorAll('.katex-mathml').forEach(el => {
+                   const isBlock = el.closest('.katex-display') !== null;
+                   const style = (el as HTMLElement).style;
+                   style.display = isBlock ? 'block' : 'inline';
+                   style.clip = 'auto';
+                   style.height = 'auto';
+                   style.width = 'auto';
+                   style.overflow = 'visible';
+                   if (isBlock) {
+                       style.textAlign = 'center';
+                       style.margin = '12pt 0';
+                   }
+                });
+
+                // Xóa Tailwind classes
+                clone.querySelectorAll('[class]').forEach(el => {
+                    el.removeAttribute('class');
+                });
+                clone.querySelectorAll('table').forEach(el => {
+                    (el as HTMLElement).style.borderCollapse = 'collapse';
+                });
+
+                const fullHtml = `
+                  <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+                  <head>
+                    <meta charset='utf-8'>
+                    <!--[if gte mso 9]>
+                    <xml>
+                      <w:WordDocument>
+                        <w:View>Print</w:View>
+                      </w:WordDocument>
+                    </xml>
+                    <![endif]-->
+                    <style>
+                      body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; color: black; }
+                      table { border: 1px solid black; border-collapse: collapse; width: 100%; }
+                      th, td { border: 1px solid black; padding: 5pt; }
+                      h1, h2, h3 { color: #1e40af; font-weight: bold; }
+                    </style>
+                  </head>
+                  <body>
+                    ${clone.innerHTML}
+                  </body>
+                  </html>
+                `;
+
+                // 2. Chuyển sang đóng gói dữ liệu
+                setWordExportState('packaging');
+                await new Promise(resolve => setTimeout(resolve, 900));
+
+                const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
+                const url = URL.createObjectURL(blob);
+                
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `Document_${Date.now()}.doc`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                // Cho trình duyệt thời gian đẩy tệp thực sự lên đĩa/hiển thị thanh công cụ tải xuống
+                setTimeout(() => {
+                   URL.revokeObjectURL(url);
+                   setWordExportState('success');
+                }, 1400);
              } else {
                 setWordExportState('idle');
              }
@@ -1321,9 +1428,8 @@ export default function App() {
             // TỰ ĐỘNG DỊCH LATEX KHI DÁN KỂ CẢ TỪ AI (KHÔNG TỐN CREDIT)
             onPaste={(e) => {
               const pastedData = e.clipboardData.getData('text');
-              const hasEntities = /&#x?[0-9a-fA-F]+;|[\u2060\u200B\uFEFF]/.test(pastedData);
               const aiAiMathRegex = /[∫√∞πΔ±≤≥≠≈×÷′\\]|\\\[|\\\(|\$\$/;
-              if (hasEntities || aiAiMathRegex.test(pastedData) || pastedData.includes('\\[') || pastedData.includes('\\(')) {
+              if (aiAiMathRegex.test(pastedData) || pastedData.includes('\\[') || pastedData.includes('\\(')) {
                 e.preventDefault();
                 const formatted = formatAiPastedContent(pastedData);
                 insertTextAtCursor(formatted);
@@ -1597,8 +1703,8 @@ export default function App() {
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Toàn bộ Security Rules mới (Đã sửa đổi công khai phần statistics):</span>
                   <button
                     type="button"
-                    onClick={async () => {
-                      await copyPlainText(`rules_version = '2';
+                    onClick={() => {
+                      navigator.clipboard.writeText(`rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
