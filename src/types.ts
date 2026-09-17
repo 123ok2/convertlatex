@@ -24,7 +24,7 @@ export interface FaqItem {
 export interface MockChatMessage {
   id: string;
   sender: 'user' | 'ai';
-  platform: 'gemini';
+  platform: 'gemini' | 'chatgpt';
   content: string;
   mathSnippet?: string;
   codeSnippet?: string;

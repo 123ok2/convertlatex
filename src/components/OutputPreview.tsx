@@ -18,7 +18,7 @@ export const OutputPreview: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Xem tài liệu học tập & nghiên cứu trông sẽ chuẩn đẹp, ngăn nắp như thế nào sau khi tải từ Google Gemini về.
+            Xem tài liệu học tập &amp; nghiên cứu trông sẽ chuẩn đẹp, ngăn nắp như thế nào sau khi tải từ Google Gemini hoặc ChatGPT về.
           </p>
         </div>
 

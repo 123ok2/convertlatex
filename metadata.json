@@ -1,6 +1,6 @@
 {
-  "name": "Hướng Dẫn Cài Đặt Gemini Study Exporter",
-  "description": "Trang hướng dẫn chi tiết tải về, cài đặt và sử dụng tiện ích mở rộng xuất cuộc trò chuyện Google Gemini sang Word, PDF và Markdown giữ nguyên 100% công thức toán LaTeX, code và bảng biểu.",
+  "name": "Hướng Dẫn Cài Đặt Gemini & ChatGPT Study Exporter",
+  "description": "Hướng dẫn ngắn gọn, khoa học và trực quan cách cài đặt và sử dụng tiện ích mở rộng xuất cuộc trò chuyện cho cả Google Gemini và ChatGPT sang Word, PDF và Markdown giữ nguyên 100% công thức toán LaTeX, code và bảng biểu.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

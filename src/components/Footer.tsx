@@ -51,7 +51,7 @@ export const Footer: React.FC = () => {
                   className="text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors"
                 >
                   <Download className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Tải file ZIP trực tiếp (108 KB)</span>
+                  <span>Tải file ZIP trực tiếp</span>
                 </a>
               </li>
               <li>

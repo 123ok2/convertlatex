@@ -49,7 +49,7 @@ export const StepOneVisual: React.FC<{ onComplete?: () => void; isDone?: boolean
               </div>
               <div className="min-w-0 flex-1">
                 <div className="font-mono font-bold text-slate-900 text-xs truncate">extentiongemini.zip</div>
-                <div className="text-[10px] text-slate-500">Kích thước: 108 KB • File nén</div>
+                <div className="text-[10px] text-slate-500">Định dạng: File nén .ZIP</div>
               </div>
             </div>
           </div>
@@ -209,16 +209,16 @@ export const StepThreeVisual: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Thẻ tiện ích Gemini Study Exporter mô phỏng chính xác từ ảnh của bạn */}
-      <div className="bg-white rounded-2xl p-4 sm:p-4.5 border-2 border-teal-500 shadow-sm space-y-3 relative">
+      {/* 2. Thẻ tiện ích Gemini & ChatGPT Study Exporter mô phỏng chuẩn xác từ ảnh chụp màn hình Chrome */}
+      <div className="bg-white rounded-2xl p-4 sm:p-4.5 border-2 border-blue-500 shadow-sm space-y-3 relative">
         <div className="absolute -top-2.5 right-4 bg-emerald-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1">
           <Check className="w-3 h-3" /> Đã cài đặt thành công!
         </div>
 
         <div className="flex items-start gap-3.5">
-          {/* Biểu tượng tích phân ∫ màu xanh ngọc */}
-          <div className="w-12 h-12 rounded-xl bg-teal-600 text-white flex items-center justify-center font-serif font-bold text-2xl relative shrink-0 shadow-md shadow-teal-600/20">
-            <span>∫</span>
+          {/* Biểu tượng chuẩn như ảnh chụp Chrome Extensions: Nền xám, chữ G, huy hiệu cam */}
+          <div className="w-12 h-12 rounded-xl bg-slate-600 text-white flex items-center justify-center font-sans font-bold text-2xl relative shrink-0 shadow-sm">
+            <span>G</span>
             <span className="absolute -bottom-1 -right-1 w-4.5 h-4.5 rounded-full bg-orange-500 text-white flex items-center justify-center text-[10px] shadow-xs border-2 border-white" title="Tiện ích đã giải nén">
               📷
             </span>
@@ -227,18 +227,18 @@ export const StepThreeVisual: React.FC = () => {
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               <strong className="text-slate-900 text-sm font-bold">
-                Gemini Study Exporter
+                Gemini &amp; ChatGPT Study Exporter
               </strong>
               <span className="text-[11px] text-slate-400 font-mono font-medium">2.6.0</span>
             </div>
 
             <p className="text-[11px] text-slate-600 leading-relaxed">
-              Tải cuộc trò chuyện hoặc chọn 1 phần đoạn chat trên Google Gemini (giữ nguyên 100% công thức toán LaTeX, bảng biểu, code)
+              Tải cuộc trò chuyện hoặc 1 phần đoạn chat trên Gemini và ChatGPT (giữ nguyên công thức toán LaTeX, bảng biểu, code)
             </p>
 
             <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400 font-mono pt-0.5">
-              <span>Mã: dfchkgpghclipflbaolicinaapfaahdo</span>
-              <span className="text-teal-600 font-semibold">• Tương thích: gemini.google.com</span>
+              <span>Mã: engndmdnnjgfbifmlfhiccandnoh...</span>
+              <span className="text-blue-600 font-semibold">• Hỗ trợ cả gemini.google.com &amp; chatgpt.com</span>
             </div>
           </div>
         </div>
@@ -271,28 +271,68 @@ export const StepThreeVisual: React.FC = () => {
 };
 
 /** 
- * HÌNH MINH HỌA BƯỚC 4: Sử dụng trên Google Gemini (Chuẩn giao diện Google Gemini)
+ * HÌNH MINH HỌA BƯỚC 4: Sử dụng trên cả Google Gemini & ChatGPT
  */
 export const GeminiUsageVisual: React.FC = () => {
+  const [platform, setPlatform] = useState<'gemini' | 'chatgpt'>('gemini');
+
   return (
     <div className="mt-3.5 bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-xs font-sans text-xs space-y-3.5 p-4 sm:p-5">
-      {/* Header thanh địa chỉ Google Gemini */}
-      <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 text-[11px] text-slate-500">
-        <div className="flex items-center gap-2">
-          <div className="px-3 py-1 rounded-lg font-bold text-xs bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs flex items-center gap-1.5">
-            <span className="text-sm">✨</span>
-            <span>gemini.google.com</span>
-          </div>
-          <span className="text-slate-400 font-mono text-[10px] hidden sm:inline">Google Workspace & Gemini AI</span>
+      {/* Tab chuyển đổi linh hoạt giữa Gemini & ChatGPT */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100">
+        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+          <button
+            onClick={() => setPlatform('gemini')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              platform === 'gemini'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>✨</span>
+            <span>Google Gemini</span>
+            <span className="text-[10px] opacity-80 hidden sm:inline">(gemini.google.com)</span>
+          </button>
+
+          <button
+            onClick={() => setPlatform('chatgpt')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              platform === 'chatgpt'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>🤖</span>
+            <span>OpenAI ChatGPT</span>
+            <span className="text-[10px] opacity-80 hidden sm:inline">(chatgpt.com)</span>
+          </button>
         </div>
 
-        <span className="text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full font-bold border border-blue-200/60 text-[10px] flex items-center gap-1">
-          <Sparkles className="w-3 h-3 text-blue-600" />
-          Tiện ích tự động tích hợp trên Gemini
+        <span className="text-slate-500 text-[11px] flex items-center gap-1">
+          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+          <span>Tự động nhận diện cả 2 nền tảng</span>
         </span>
       </div>
 
-      {/* Khung mô phỏng câu hỏi và trả lời trên Gemini */}
+      {/* Header thanh địa chỉ giả lập */}
+      <div className="flex items-center justify-between pb-1 text-[11px] text-slate-500">
+        <div className="flex items-center gap-2">
+          <div className={`px-2.5 py-0.5 rounded-md font-bold text-[11px] border flex items-center gap-1.5 ${
+            platform === 'gemini' 
+              ? 'bg-blue-50 text-blue-700 border-blue-200' 
+              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+          }`}>
+            <span>🔒</span>
+            <span className="font-mono">{platform === 'gemini' ? 'https://gemini.google.com' : 'https://chatgpt.com'}</span>
+          </div>
+        </div>
+
+        <span className="text-[10px] text-slate-400 font-medium">
+          Nhấn F5 sau khi cài tiện ích
+        </span>
+      </div>
+
+      {/* Khung mô phỏng câu hỏi và trả lời */}
       <div className="space-y-3">
         {/* Câu hỏi của người dùng */}
         <div className="flex items-start gap-2.5 justify-end">
@@ -304,21 +344,31 @@ export const GeminiUsageVisual: React.FC = () => {
           </div>
         </div>
 
-        {/* Tin nhắn câu trả lời Gemini kèm ô checkbox chọn phần xuất */}
-        <div className="p-4 rounded-2xl bg-gradient-to-b from-blue-50/40 via-white to-slate-50/50 border border-blue-100/80 space-y-3 shadow-2xs">
+        {/* Tin nhắn câu trả lời AI kèm ô checkbox chọn phần xuất */}
+        <div className={`p-4 rounded-2xl border space-y-3 shadow-2xs transition-all ${
+          platform === 'gemini' 
+            ? 'bg-gradient-to-b from-blue-50/40 via-white to-slate-50/50 border-blue-100/80' 
+            : 'bg-gradient-to-b from-emerald-50/40 via-white to-slate-50/50 border-emerald-100/80'
+        }`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center text-[10px] shadow-xs">
-                ✨
+              <div className={`w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] shadow-xs ${
+                platform === 'gemini' ? 'bg-gradient-to-tr from-blue-600 to-indigo-500' : 'bg-emerald-600'
+              }`}>
+                {platform === 'gemini' ? '✨' : '🤖'}
               </div>
               <span className="font-bold text-slate-900 text-xs">
-                Google Gemini
+                {platform === 'gemini' ? 'Google Gemini' : 'ChatGPT (GPT-4o)'}
               </span>
             </div>
 
             {/* Ô checkbox do Extension chèn tự động trên mỗi câu trả lời */}
-            <div className="flex items-center gap-1.5 bg-white border border-blue-400 hover:border-blue-600 px-2.5 py-1 rounded-lg text-[11px] font-bold text-blue-700 shadow-2xs transition-colors">
-              <div className="w-3.5 h-3.5 bg-blue-600 text-white rounded flex items-center justify-center text-[9px] font-bold">
+            <div className={`flex items-center gap-1.5 bg-white border px-2.5 py-1 rounded-lg text-[11px] font-bold shadow-2xs transition-colors ${
+              platform === 'gemini' ? 'border-blue-400 text-blue-700' : 'border-emerald-400 text-emerald-700'
+            }`}>
+              <div className={`w-3.5 h-3.5 text-white rounded flex items-center justify-center text-[9px] font-bold ${
+                platform === 'gemini' ? 'bg-blue-600' : 'bg-emerald-600'
+              }`}>
                 ✓
               </div>
               <span>Chọn phần này để xuất riêng</span>
@@ -331,7 +381,7 @@ export const GeminiUsageVisual: React.FC = () => {
 
           {/* Khối công thức Toán LaTeX */}
           <div className="p-3 rounded-xl bg-white border border-slate-200/90 font-mono text-slate-900 text-xs shadow-2xs flex flex-wrap items-center justify-between gap-2">
-            <span className="text-blue-900 font-bold">∫ x·e⁻ˣ dx = -e⁻ˣ·(x + 1) + C</span>
+            <span className="text-slate-900 font-bold">∫ x·e⁻ˣ dx = -e⁻ˣ·(x + 1) + C</span>
             <span className="text-[10px] bg-emerald-50 text-emerald-700 font-sans font-bold px-2 py-0.5 rounded border border-emerald-200/60">
               Giữ nguyên LaTeX 100%
             </span>
@@ -352,20 +402,22 @@ export const GeminiUsageVisual: React.FC = () => {
         </div>
       </div>
 
-      {/* Thanh công cụ nổi ở góc dưới bên phải màn hình Gemini */}
+      {/* Thanh công cụ nổi ở góc dưới bên phải màn hình Gemini & ChatGPT */}
       <div className="p-3.5 rounded-2xl bg-slate-950 text-white flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg shadow-slate-950/20">
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
           <div className="text-left">
             <div className="text-xs text-amber-300 font-bold flex items-center gap-1">
-              <span>⚡ Thanh Nút Nổi Tự Động Góc Dưới Google Gemini:</span>
+              <span>⚡ Thanh Nút Nổi Tự Động Góc Dưới Màn Hình ({platform === 'gemini' ? 'Gemini' : 'ChatGPT'}):</span>
             </div>
             <div className="text-[10px] text-slate-400">Xuất toàn bộ hoặc chỉ xuất các phần đã tick chọn</div>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 text-[11px] font-bold shrink-0">
-          <span className="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white shadow-xs flex items-center gap-1">
+          <span className={`px-3.5 py-1.5 rounded-xl text-white shadow-xs flex items-center gap-1 ${
+            platform === 'gemini' ? 'bg-blue-600' : 'bg-emerald-600'
+          }`}>
             <span>⚡</span>
             <span>Tải Tất Cả</span>
           </span>
