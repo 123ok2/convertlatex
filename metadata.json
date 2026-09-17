@@ -1,6 +1,6 @@
 {
-  "name": "LaTeX Math Editor & Docx Exporter",
-  "description": "An interactive markdown and LaTeX editor with handwritten formula recognition, online MathType, and export to MS Word (.docx) support.",
+  "name": "Hướng Dẫn Cài Đặt Gemini Study Exporter",
+  "description": "Trang hướng dẫn chi tiết tải về, cài đặt và sử dụng tiện ích mở rộng xuất cuộc trò chuyện Google Gemini sang Word, PDF và Markdown giữ nguyên 100% công thức toán LaTeX, code và bảng biểu.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
