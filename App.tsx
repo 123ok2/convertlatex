@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { Button } from './components/Button';
 import { DrawingModal } from './components/DrawingModal';
@@ -1826,7 +1827,7 @@ service cloud.firestore {
         </div>
       )}
 
-
+      <Analytics />
     </div>
   );
 }
