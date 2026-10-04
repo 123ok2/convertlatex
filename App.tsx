@@ -868,7 +868,7 @@ export default function App() {
     <div className="h-screen flex flex-col items-center justify-center bg-slate-50">
       <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
       <span className="text-slate-500 font-medium font-mono text-xs uppercase tracking-widest">Đang kiểm tra bảo mật...</span>
-    </div>
+    </div> 
   );
 
   if (!user) return (
@@ -1120,6 +1120,25 @@ export default function App() {
              </div>
            </a>
 
+ <a 
+             href="https://drive.google.com/file/d/1kKihOm-I4FYuMhNbWfjchUAT4MnoAjIA/view"
+             target="_blank"
+             rel="noopener noreferrer"
+             className="flex items-center gap-3 px-4 py-1.5 bg-gradient-to-r from-violet-50 to-violet-100/30 text-violet-800 border border-violet-200 hover:border-violet-300 rounded-xl shadow-2xs transition-colors duration-200 select-none cursor-pointer group"
+           >
+             <div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-xs">
+                <Puzzle className="text-white group-hover:rotate-12 transition-transform duration-200" size={15} />
+             </div>
+             <div className="hidden sm:block text-left animate-pulse">
+                <p className="text-xs font-black text-violet-950 mt-1 leading-none">Cài Extension chạy trực tiếp trên khung chát</p>
+             </div>
+           </a>
+
+
+
+
+
+          
            <div className="flex items-center gap-3 px-4 py-1.5 bg-gradient-to-r from-amber-50 to-amber-100/30 text-amber-800 border border-amber-200 hover:border-amber-300 rounded-xl shadow-2xs transition-colors duration-200 select-none">
              <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-500 rounded-lg flex items-center justify-center shadow-xs">
                 <Zap className="text-white" size={15} fill="white" />
