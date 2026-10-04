@@ -202,7 +202,7 @@ export const InteractiveDemo: React.FC = () => {
                       <table className="w-full text-left text-xs border-collapse">
                         <thead>
                           <tr className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
-                            {msg.tableData.headers.map((h, idx) => (
+                            {msg.tableData.headers.map((h: string, idx: number) => (
                               <th key={idx} className="p-2 border-r border-slate-200 last:border-r-0">
                                 {h}
                               </th>
@@ -210,12 +210,12 @@ export const InteractiveDemo: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {msg.tableData.rows.map((row, rIdx) => (
+                          {msg.tableData.rows.map((row: string[], rIdx: number) => (
                             <tr
                               key={rIdx}
                               className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
                             >
-                              {row.map((cell, cIdx) => (
+                              {row.map((cell: string, cIdx: number) => (
                                 <td
                                   key={cIdx}
                                   className="p-2 border-r border-slate-100 last:border-r-0 font-mono text-slate-700"

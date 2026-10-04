@@ -50,7 +50,10 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
-  Puzzle
+  Puzzle,
+  Sparkles,
+  Globe,
+  ExternalLink
 } from 'lucide-react';
 
 /**
@@ -284,6 +287,7 @@ export default function App() {
   const [isDeducting, setIsDeducting] = useState(false);
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showExtensionMenu, setShowExtensionMenu] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'info' | 'error'} | null>(null);
   const [wordExportState, setWordExportState] = useState<'idle' | 'preparing' | 'packaging' | 'success'>('idle');
 
@@ -299,11 +303,6 @@ export default function App() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-
-
-
-
-  
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 4000);
@@ -312,12 +311,15 @@ export default function App() {
   }, [toast]);
 
   useEffect(() => {
-    const handleOutsideClick = () => setShowProfileMenu(false);
-    if (showProfileMenu) {
+    const handleOutsideClick = () => {
+      setShowProfileMenu(false);
+      setShowExtensionMenu(false);
+    };
+    if (showProfileMenu || showExtensionMenu) {
       window.addEventListener('click', handleOutsideClick);
       return () => window.removeEventListener('click', handleOutsideClick);
     }
-  }, [showProfileMenu]);
+  }, [showProfileMenu, showExtensionMenu]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -1106,19 +1108,77 @@ export default function App() {
             </span>
           </div>
 
-           <a 
-             href="https://drive.google.com/file/d/1rrC39rto8-4erhY7NLSIzCQQdyK6adej/view?usp=drive_link"
-             target="_blank"
-             rel="noopener noreferrer"
-             className="flex items-center gap-3 px-4 py-1.5 bg-gradient-to-r from-violet-50 to-violet-100/30 text-violet-800 border border-violet-200 hover:border-violet-300 rounded-xl shadow-2xs transition-colors duration-200 select-none cursor-pointer group"
-           >
-             <div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-xs">
-                <Puzzle className="text-white group-hover:rotate-12 transition-transform duration-200" size={15} />
-             </div>
-             <div className="hidden sm:block text-left animate-pulse">
-                <p className="text-xs font-black text-violet-950 mt-1 leading-none">Cài Extension</p>
-             </div>
-           </a>
+           <div className="relative" onClick={(e) => e.stopPropagation()}>
+             <button 
+               type="button"
+               onClick={() => {
+                 setShowExtensionMenu(!showExtensionMenu);
+                 setShowProfileMenu(false);
+               }}
+               className="flex items-center gap-2.5 px-3.5 py-1.5 bg-gradient-to-r from-violet-50 to-violet-100/40 text-violet-800 border border-violet-200 hover:border-violet-300 hover:bg-violet-100/60 rounded-xl shadow-2xs transition-all duration-200 select-none cursor-pointer group"
+               title="Tùy chọn tải Extension"
+             >
+               <div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-xs">
+                  <Puzzle className="text-white group-hover:rotate-12 transition-transform duration-200" size={15} />
+               </div>
+               <div className="hidden sm:block text-left">
+                  <p className="text-xs font-black text-violet-950 leading-none">Cài Extension</p>
+                  <span className="text-[10px] text-violet-600 font-semibold leading-tight block mt-0.5">2 tùy chọn</span>
+               </div>
+               <ChevronDown size={13} className={`text-violet-500 transition-transform duration-200 ${showExtensionMenu ? 'rotate-180' : ''}`} />
+             </button>
+
+             {showExtensionMenu && (
+               <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200/80 p-2.5 z-50 animate-in zoom-in-95 duration-150">
+                 <div className="px-3 py-2 border-b border-slate-100 mb-2">
+                   <div className="flex items-center justify-between">
+                     <div className="flex items-center gap-2">
+                       <Puzzle size={16} className="text-violet-600" />
+                       <span className="text-xs font-extrabold text-slate-800">Chọn phiên bản Extension</span>
+                     </div>
+                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">Google Drive</span>
+                   </div>
+                   <p className="text-[11px] text-slate-500 mt-1">Chọn phiên bản tiện ích phù hợp với nhu cầu của bạn:</p>
+                 </div>
+
+                 <div className="space-y-1.5">
+                   {/* Tùy chọn 1: Dùng trực tiếp trên giao diện Chat AI */}
+                   <a
+                     href="https://drive.google.com/file/d/1kKihOm-I4FYuMhNbWfjchUAT4MnoAjIA/view?usp=drive_link"
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     onClick={() => setShowExtensionMenu(false)}
+                     className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-violet-50/80 border border-violet-100/60 hover:border-violet-300 transition-all group/item cursor-pointer bg-gradient-to-r from-violet-50/30 to-fuchsia-50/20"
+                   >
+                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 via-fuchsia-600 to-pink-500 text-white flex items-center justify-center shrink-0 shadow-sm group-hover/item:scale-105 transition-transform">
+                       <Bot size={16} />
+                     </div>
+                     <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                       <span className="text-xs font-bold text-slate-900 group-hover/item:text-violet-700 truncate">Bản cho Giao diện Chat AI</span>
+                       <span className="px-1.5 py-0.5 bg-violet-600 text-white text-[9px] font-black rounded-full shrink-0 shadow-2xs">Khuyên dùng</span>
+                     </div>
+                   </a>
+
+                   {/* Tùy chọn 2: Dành cho phiên bản web (link cũ) */}
+                   <a
+                     href="https://drive.google.com/file/d/1rrC39rto8-4erhY7NLSIzCQQdyK6adej/view?usp=drive_link"
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     onClick={() => setShowExtensionMenu(false)}
+                     className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-50 border border-slate-100 hover:border-slate-300 transition-all group/item cursor-pointer"
+                   >
+                     <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 group-hover/item:bg-indigo-50 group-hover/item:text-indigo-600 flex items-center justify-center shrink-0 shadow-2xs transition-colors">
+                       <Globe size={16} />
+                     </div>
+                     <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                       <span className="text-xs font-bold text-slate-900 group-hover/item:text-indigo-600 truncate">Bản cho Phiên bản Web</span>
+                       <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[9px] font-bold rounded-full shrink-0">Bản Web</span>
+                     </div>
+                   </a>
+                 </div>
+               </div>
+             )}
+           </div>
           
            <div className="flex items-center gap-3 px-4 py-1.5 bg-gradient-to-r from-amber-50 to-amber-100/30 text-amber-800 border border-amber-200 hover:border-amber-300 rounded-xl shadow-2xs transition-colors duration-200 select-none">
              <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-500 rounded-lg flex items-center justify-center shadow-xs">
