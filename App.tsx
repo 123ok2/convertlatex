@@ -115,7 +115,6 @@ const autoFormatMath = (text: string): string => {
     
     // Nhận diện các biểu thức dạng phân số đơn giản: C% = mct/mdd * 100%
     if (p.includes('/') && !p.includes('http') && p.includes('=')) {
-        // Thử chuyển đổi x/y thành \frac{x}{y}
         p = p.replace(/([a-zA-Z0-9_{}\(\)]+)\/([a-zA-Z0-9_{}\(\)]+)/g, "\\frac{$1}{$2}");
     }
 
@@ -138,15 +137,12 @@ const formatAiPastedContent = (text: string): string => {
   p = p.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
   p = p.replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
 
-  // Đôi khi có thêm dấu ngoặc kép bọc quanh: "\(...\)" -> $...$ 
   p = p.replace(/"\$\$(.*?)\$\$"/g, '$$$$$1$$$$');
   p = p.replace(/"\$(.*?)\$"/g, '$$$1$$');
 
-  // Đôi khi AI trả về markdown có dạng ```latex ... ```
   p = p.replace(/```latex\n([\s\S]*?)\n```/g, '$$$$\n$1\n$$$$');
   p = p.replace(/```math\n([\s\S]*?)\n```/g, '$$$$\n$1\n$$$$');
 
-  // Sửa lỗi công thức dính vào nhau hoặc thiếu line break:
   p = p.replace(/(^|[^\$])(\$\$[^\$]+\$\$)(?=\$)/g, '$1$2\n\n');
 
   // 2. Chuyển đổi các ký hiệu toán học unicode thô thành LaTeX
@@ -171,33 +167,26 @@ const formatAiPastedContent = (text: string): string => {
        .replace(/⇔/g, '\\Leftrightarrow ')
        .replace(/⇒/g, '\\Rightarrow ');
 
-  // 2.5 Escape các ký tự % thô để LaTeX hiểu (tránh biến thành comment trong math block)
   p = p.replace(/([^\\]|^)%/g, '$1\\%');
 
-  // 3. Xử lý vi phân (dx, dy, dt) khi nó đứng độc lập
+  // 3. Xử lý vi phân
   p = p.replace(/(^|\s)(\d*[a-zA-Z]?)dx(\s|$)/g, '$1$2 \\,dx$3')
        .replace(/(^|\s)(\d*[a-zA-Z]?)dy(\s|$)/g, '$1$2 \\,dy$3')
        .replace(/(^|\s)(\d*[a-zA-Z]?)dt(\s|$)/g, '$1$2 \\,dt$3');
 
-  // 4. Xử lý căn bậc hai dạng √x hoặc √(x+y)
+  // 4. Xử lý căn bậc hai
   p = p.replace(/√\(([^)]+)\)/g, '\\sqrt{$1}')
        .replace(/√([a-zA-Z0-9]+)/g, '\\sqrt{$1}');
        
-  // 5. Xử lý các biến có chỉ số dưới viết liền (mdd -> m_{dd}, mct -> m_{ct})
-  // Thường thấy trong hóa học: mct, mdd, nH2, Vdd, CM, C%
+  // 5. Xử lý các biến hóa học
   p = p.replace(/\b(m|n|V|C)(dd|ct|H2|O2|CO2|H2O|HCl|NaOH|H2SO4)\b/g, '$1_{$2}');
-  
-  // Đặc trị pattern C% = mct/mdd * 100% khi bị mất dấu phân số hoặc dính chữ
   p = p.replace(/C\\%\s?=\s?(mct|m_{ct})\s?(mdd|m_{dd})\s?(\\times|\*|×)\s?100\\\%/g, "C\\% = \\frac{m_{ct}}{m_{dd}} \\times 100\\%");
-  p = p.replace(/C\\%\s?=\s?(mdd|m_{dd})\s?(mct|m_{ct})\s?(\\times|\*|×)\s?100\\\%/g, "C\\% = \\frac{m_{ct}}{m_{dd}} \\times 100\\%"); // Đôi khi bị đảo
-  
-  // Xử lý n và V cho các chất khí/lỏng phổ biến
+  p = p.replace(/C\\%\s?=\s?(mdd|m_{dd})\s?(mct|m_{ct})\s?(\\times|\*|×)\s?100\\\%/g, "C\\% = \\frac{m_{ct}}{m_{dd}} \\times 100\\%");
   p = p.replace(/\b(n|V|m)([A-Z][a-z]?\d?)\b/g, '$1_{$2}');
 
-  // 6. Xử lý phân số dạng a/b thành \frac{a}{b} nếu nằm trong dòng có vẻ là toán
+  // 6. Xử lý phân số
   const handleFractions = (line: string) => {
     if (!line.includes('/') || line.includes('http')) return line;
-    // Tìm x/y trong đó x, y là cụm ký tự toán học
     return line.replace(/([a-zA-Z0-9_{}\(\)\%]+)\s?\/\s?([a-zA-Z0-9_{}\(\)\%]+)/g, "\\frac{$1}{$2}");
   };
 
@@ -217,28 +206,21 @@ const formatAiPastedContent = (text: string): string => {
     }
     if (inAiMathBlock) return currentLine;
 
-    // Áp dụng xử lý phân số cho dòng không phải block
     if (trimmed && !trimmed.includes('$')) {
         currentLine = handleFractions(currentLine);
     }
 
-    // Nếu dòng trống hoặc đã có ký hiệu latex block inline
     if (!trimmed || currentLine.includes('$')) return currentLine;
     
-    // Nhận diện dòng chứa biểu thức toán
     const mathMatch = currentLine.match(/\\int|\\sqrt|\\frac|\\sin|\\cos|\\tan|\\lim|\\sum|\\Delta|\\alpha|\\beta|\\gamma|\\theta|\^|_|\\times|\\div|\\leq|\\geq|\\neq/g);
-    
-    // Đếm số lượng từ thông thường để xét xem đây là câu văn hay phương trình
     const normalWordsMatch = trimmed.match(/[a-zA-Z]{4,}/g);
     const normalWordsCount = normalWordsMatch ? normalWordsMatch.length : 0;
     
-    // Nếu có ít nhất 1 ký hiệu toán và ít từ bình thường, hoặc có dấu = và ký hiệu toán
     if ((mathMatch && mathMatch.length >= 1 && normalWordsCount <= 3) || 
         (currentLine.includes('=') && mathMatch)) {
       return `$$ ${currentLine.trim()} $$`;
     }
     
-    // Nếu chỉ là một phương trình đơn giản như x^2 + y^2 = 1 hoặc C% = ...
     if (/^[a-zA-Z0-9\+\-\=\^\_\(\)\s\%\/\\\{\}]+$/.test(trimmed) && trimmed.includes('=') && 
        (trimmed.includes('^') || trimmed.includes('_') || trimmed.includes('/') || trimmed.includes('\\'))) {
       return `$$ ${currentLine.trim()} $$`;
@@ -284,6 +266,9 @@ export default function App() {
   const [isDeducting, setIsDeducting] = useState(false);
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  // State quản lý popup lựa chọn phiên bản Extension
+  const [showExtensionMenu, setShowExtensionMenu] = useState(false);
+  
   const [toast, setToast] = useState<{message: string, type: 'success' | 'info' | 'error'} | null>(null);
   const [wordExportState, setWordExportState] = useState<'idle' | 'preparing' | 'packaging' | 'success'>('idle');
 
@@ -299,11 +284,6 @@ export default function App() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-
-
-
-
-  
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 4000);
@@ -311,13 +291,17 @@ export default function App() {
     }
   }, [toast]);
 
+  // Xử lý tự động đóng Profile Menu & Extension Menu khi click ra ngoài
   useEffect(() => {
-    const handleOutsideClick = () => setShowProfileMenu(false);
-    if (showProfileMenu) {
+    const handleOutsideClick = () => {
+      setShowProfileMenu(false);
+      setShowExtensionMenu(false);
+    };
+    if (showProfileMenu || showExtensionMenu) {
       window.addEventListener('click', handleOutsideClick);
       return () => window.removeEventListener('click', handleOutsideClick);
     }
-  }, [showProfileMenu]);
+  }, [showProfileMenu, showExtensionMenu]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -347,7 +331,6 @@ export default function App() {
       visitLogged = true;
       logVisit();
     }
-    // Tự động cập nhật số liệu công khai định kỳ mỗi 15 giây
     const intervalId = setInterval(() => {
       loadStats().catch(err => console.warn("Periodic stats load failed:", err));
       loadAccountCounts().catch(err => console.warn("Periodic account counts load failed:", err));
@@ -376,7 +359,6 @@ export default function App() {
             firstUserId: id,
             claimedAt: Timestamp.now(),
             type: isGuest ? 'guest' : 'member',
-            // Also write fields in Vietnamese for backward compatibility
             "tuyên bố tại": Timestamp.now(),
             "loại": isGuest ? 'khách' : 'thành viên'
           });
@@ -392,7 +374,6 @@ export default function App() {
           isGuest
         });
 
-        // Tự động cập nhật tài liệu thống kê tổng hợp tại statistics/accounts bằng atomic increment
         const accountsStatsRef = doc(db, 'statistics', 'accounts');
         const updateFields: any = {};
         if (isGuest) {
@@ -412,7 +393,6 @@ export default function App() {
         }
 
         setCredits(initialCredits);
-        // Tự động load lại thống kê thực tế để hiển thị con số chính xác tức thì
         await loadAccountCounts();
       }
     } catch (error: any) {
@@ -445,9 +425,7 @@ export default function App() {
     if (localData) {
       try {
         setStats(JSON.parse(localData));
-      } catch (e) {
-        // defaults if error
-      }
+      } catch (e) {}
     } else {
       const initialStats = {
         daily: {},
@@ -495,7 +473,6 @@ export default function App() {
   };
 
   const loadAccountCounts = async () => {
-    // 1. Thử lấy nhanh dữ liệu đã lưu từ 'statistics/accounts' để hiển thị tức thì trên UI
     try {
       const accountsStatsRef = doc(db, 'statistics', 'accounts');
       const statsSnap = await getDoc(accountsStatsRef);
@@ -518,12 +495,10 @@ export default function App() {
       if (cachedGuests) setAnonymousAccountsCount(parseInt(cachedGuests));
     }
 
-    // 2. Chạy đếm thực tế (recount) trực tiếp từ các collection để cập nhật số liệu chính xác tuyệt đối
     try {
-      // 2. Chỉ chạy đếm thực tế (recount) trực tiếp nếu là Admin để tiết kiệm tài nguyên và bảo mật tuyệt đối, tránh bị ghi đè dữ liệu
       const isAdminUser = auth.currentUser && (auth.currentUser.email === "duyconghanh2017@gmail.com" || auth.currentUser.email === "rongtiendatto@gmail.com");
       if (!isAdminUser) {
-        return; // Người dùng thường chỉ đọc dữ liệu tổng hợp ở bước 1, không tự đếm tránh bị rules chặn
+        return;
       }
 
       const usersColEng = collection(db, 'users');
@@ -543,7 +518,6 @@ export default function App() {
         getCountFromServer(guestsColVie).catch(() => null)
       ]);
 
-      // Chỉ cập nhật đồng bộ nếu TẤT CẢ các truy vấn đếm trực tiếp thành công (tránh ghi đè khi bị ném lỗi null)
       if (usersSnapEng !== null && usersSnapVie !== null && guestsSnapEng !== null && guestsSnapVie !== null) {
         const countUsersEng = usersSnapEng ? usersSnapEng.data().count : 0;
         const countUsersVie = usersSnapVie ? usersSnapVie.data().count : 0;
@@ -553,13 +527,11 @@ export default function App() {
         const totalUsers = countUsersEng + countUsersVie;
         const totalGuests = countGuestsEng + countGuestsVie;
 
-        // Cập nhật state UI và cache ngay lập tức
         setRegisteredAccountsCount(totalUsers);
         setAnonymousAccountsCount(totalGuests);
         localStorage.setItem('local_users_count', totalUsers.toString());
         localStorage.setItem('local_guests_count', totalGuests.toString());
 
-        // Lấy thông tin lượt truy cập hiện tại từ Firestore hoặc State để đồng bộ đầy đủ các trường
         const todayStr = new Date().toISOString().slice(0, 10);
         let currToday = stats?.daily?.[todayStr] || 0;
         let currTotal = stats?.total || 0;
@@ -576,7 +548,6 @@ export default function App() {
           console.warn("Could not get visits doc for combined stats:", err);
         }
 
-        // Đồng bộ dữ liệu thực tế vừa đếm được lên Firestore để làm dữ liệu chuẩn cho các lượt truy cập khác
         const accountsStatsRef = doc(db, 'statistics', 'accounts');
         await setDoc(accountsStatsRef, {
           usersCount: totalUsers,
@@ -628,7 +599,6 @@ export default function App() {
       const countGuests = (guestsSnapEng?.data().count ?? 0) + (guestsSnapVie?.data().count ?? 0);
       const countDevices = (devicesSnapEng?.data().count ?? 0) + (devicesSnapVie?.data().count ?? 0);
 
-      // Lấy thông tin lượt truy cập mới nhất từ Firestore
       const todayStr = new Date().toISOString().slice(0, 10);
       let rebuildToday = stats?.daily?.[todayStr] || 0;
       let rebuildTotal = stats?.total || 0;
@@ -803,7 +773,6 @@ export default function App() {
     const previousContent = textarea.value;
     const newContent = previousContent.substring(0, start) + textBefore + previousContent.substring(start, end) + textAfter + previousContent.substring(end);
     
-    // Áp dụng autoFormat (logic có sẵn của bạn)
     const formatted = autoFormatMath(newContent);
     setContent(formatted);
     setPreviewContent(formatted);
@@ -822,7 +791,6 @@ export default function App() {
         setIsDrawingModalOpen(false);
         return;
       }
-      // Chèn có xuống dòng để autoFormatMath nhận diện đúng là block
       insertTextAtCursor(`\n$$ ${latex.trim()} $$\n`);
       setIsDrawingModalOpen(false);
       setToast({ message: "✨ Đã chèn công thức", type: 'success' });
@@ -974,7 +942,7 @@ export default function App() {
                 </div>
                 <div className="pt-0.5 flex gap-1.5 text-[9px]">
                   <a 
-                    href="https://console.firebase.google.com/project/okoko-807c1/authentication/providers"
+                    href="https://console.firebase.google.com/project/okoko-807c1/authentication/providers" 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-center font-bold px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded transition-colors shadow-sm"
@@ -1044,9 +1012,8 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Thống kê công khai và tự động cập nhật trực tiếp trên thanh công cụ */}
+          {/* Thống kê công khai */}
           <div className="hidden lg:flex items-center gap-2 bg-slate-100/60 border border-slate-200/50 rounded-2xl p-1 shrink-0 select-none shadow-2xs font-sans">
-            {/* Truy cập hôm nay */}
             <div className="flex items-center gap-2 py-1 px-2.5 bg-white rounded-xl border border-slate-200/40 shadow-3xs hover:bg-slate-50/50 transition-colors">
               <span className="text-sm select-none">📅</span>
               <div>
@@ -1057,7 +1024,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Tổng truy cập */}
             <div className="flex items-center gap-2 py-1 px-2.5 bg-white rounded-xl border border-slate-200/40 shadow-3xs hover:bg-slate-50/50 transition-colors">
               <span className="text-sm select-none">🌍</span>
               <div>
@@ -1068,7 +1034,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Thành viên */}
             <div className="flex items-center gap-2 py-1 px-2.5 bg-white rounded-xl border border-slate-200/40 shadow-3xs hover:bg-slate-50/50 transition-colors">
               <span className="text-sm select-none">👤</span>
               <div>
@@ -1079,7 +1044,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Khách ẩn danh */}
             <div className="flex items-center gap-2 py-1 px-2.5 bg-white rounded-xl border border-slate-200/40 shadow-3xs hover:bg-slate-50/50 transition-colors">
               <span className="text-sm select-none">🕵️</span>
               <div>
@@ -1091,7 +1055,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Thống kê rút gọn trên thiết bị di động */}
           <div className="flex lg:hidden items-center gap-2 bg-slate-100/60 border border-slate-200/50 rounded-xl px-2.5 py-1.5 shadow-3xs text-[10px] select-none font-sans font-semibold">
             <span className="text-[#0ea5e9] flex items-center gap-1">
               <span>🌍</span> {((stats.total || 0) + 100000).toLocaleString('vi-VN')}
@@ -1106,74 +1069,144 @@ export default function App() {
             </span>
           </div>
 
-           <a 
-             href="https://drive.google.com/file/d/1rrC39rto8-4erhY7NLSIzCQQdyK6adej/view?usp=drive_link"
-             target="_blank"
-             rel="noopener noreferrer"
-             className="flex items-center gap-3 px-4 py-1.5 bg-gradient-to-r from-violet-50 to-violet-100/30 text-violet-800 border border-violet-200 hover:border-violet-300 rounded-xl shadow-2xs transition-colors duration-200 select-none cursor-pointer group"
-           >
-             <div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-xs">
-                <Puzzle className="text-white group-hover:rotate-12 transition-transform duration-200" size={15} />
-             </div>
-             <div className="hidden sm:block text-left animate-pulse">
-                <p className="text-xs font-black text-violet-950 mt-1 leading-none">Cài Extension</p>
-             </div>
-           </a>
-          
-           <div className="flex items-center gap-3 px-4 py-1.5 bg-gradient-to-r from-amber-50 to-amber-100/30 text-amber-800 border border-amber-200 hover:border-amber-300 rounded-xl shadow-2xs transition-colors duration-200 select-none">
-             <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-500 rounded-lg flex items-center justify-center shadow-xs">
-                <Zap className="text-white" size={15} fill="white" />
-             </div>
-             <div>
-                <p className="text-[8px] font-black text-amber-600 tracking-wider uppercase leading-none">Số dư</p>
-                <p className="text-sm font-black text-amber-950 mt-1 leading-none">{credits ?? 0} Credits</p>
-             </div>
-           </div>
+          {/* NÚT CÀI EXTENSION VỚI MENU 2 TÙY CHỌN */}
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <button 
+              type="button"
+              onClick={() => setShowExtensionMenu(!showExtensionMenu)}
+              className="flex items-center gap-2.5 px-3.5 py-1.5 bg-gradient-to-r from-violet-50 to-violet-100/40 text-violet-800 border border-violet-200 hover:border-violet-300 rounded-xl shadow-2xs hover:shadow-xs transition-all duration-200 select-none cursor-pointer group"
+            >
+              <div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-xs">
+                 <Puzzle className={`text-white transition-transform duration-200 ${showExtensionMenu ? 'rotate-45' : 'group-hover:rotate-12'}`} size={15} />
+              </div>
+              <div className="hidden sm:block text-left">
+                 <p className="text-xs font-black text-violet-950 leading-none">Cài Extension</p>
+                 <p className="text-[9px] font-semibold text-violet-600/80 leading-none mt-1">2 phiên bản</p>
+              </div>
+              <ChevronDown size={13} className={`text-violet-500 transition-transform duration-200 ${showExtensionMenu ? 'rotate-180' : ''}`} />
+            </button>
 
-           <div className="relative" onClick={(e) => e.stopPropagation()}>
-             <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 hover:bg-white transition-all shadow-3xs cursor-pointer">
-               <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white shadow-xs transition-all duration-200 ${user.isGuest ? 'bg-gradient-to-br from-orange-400 to-orange-500' : 'bg-gradient-to-br from-indigo-550 to-indigo-600'}`}>
-                 {user.isGuest ? <Monitor size={16} /> : (user.email?.[0].toUpperCase() || 'U')}
-               </div>
-               <ChevronDown size={14} className={`text-slate-400 mr-1 transition-transform duration-200 ${showProfileMenu ? 'rotate-180' : ''}`} />
-             </button>
-             
-             {showProfileMenu && (
-               <div className="absolute right-0 top-full mt-3 w-72 bg-white rounded-[28px] shadow-2xl border border-slate-100 overflow-hidden z-50 animate-in zoom-in-95 duration-200">
-                  <div className="p-6 bg-indigo-50/50 border-b border-indigo-100">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-lg ${user.isGuest ? 'bg-orange-500' : 'bg-indigo-600'}`}>
-                        {user.isGuest ? <Fingerprint size={24} /> : (user.email?.[0].toUpperCase() || 'U')}
-                      </div>
-                      <div className="overflow-hidden">
-                        <h4 className="font-bold text-slate-900 truncate">{user.isGuest ? "Người dùng Khách" : "Thành viên Pro"}</h4>
-                        <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider flex items-center gap-1"><ShieldCheck size={10}/> Đã xác thực</p>
-                      </div>
+            {/* Menu xổ xuống khi bấm vào nút Cài Extension */}
+            {showExtensionMenu && (
+              <div className="absolute right-0 top-full mt-2.5 w-80 bg-white rounded-2xl shadow-2xl border border-violet-100 p-2 z-50 animate-in zoom-in-95 duration-200">
+                <div className="px-3 py-2 border-b border-slate-100">
+                  <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                    <Puzzle size={13} className="text-violet-600" /> Chọn phiên bản Extension
+                  </h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5 font-medium">Bấm vào phiên bản phù hợp để tải về</p>
+                </div>
+
+                <div className="space-y-1 p-1 mt-1">
+                  {/* Tùy chọn 1: Dùng kết hợp bản Web */}
+                  <a 
+                    href="https://drive.google.com/file/d/1rrC39rto8-4erhY7NLSIzCQQdyK6adej/view?usp=drive_link"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowExtensionMenu(false)}
+                    className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-violet-50/70 transition-all border border-transparent hover:border-violet-100 group cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-violet-100 text-violet-700 flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-violet-600 group-hover:text-white transition-colors shadow-2xs text-sm">
+                      🌐
                     </div>
-                    <div className="space-y-2">
-                       <div className="flex flex-col gap-1">
-                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">ID Tài khoản</label>
-                          <div onClick={() => { navigator.clipboard.writeText(user.uid); setToast({ message: "Đã copy ID", type: 'success' }); }} className="flex items-center justify-between gap-2 text-slate-600 text-[11px] font-mono bg-white p-2 rounded-xl border border-indigo-50 cursor-pointer hover:bg-indigo-100/50 transition-colors">
-                            <span className="truncate">{user.uid}</span>
-                            <CopyIcon size={12} className="text-slate-400" />
-                          </div>
-                       </div>
-                       <div className="flex flex-col gap-1">
-                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Email</label>
-                          <div className="flex items-center gap-2 text-slate-500 text-xs bg-white/80 p-2 rounded-xl border border-indigo-50">
-                            <Mail size={12}/> <span className="truncate">{user?.displayEmail}</span>
-                          </div>
-                       </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-900 group-hover:text-violet-700 transition-colors">
+                          Bản kết hợp Web
+                        </span>
+                        <span className="text-[9px] font-extrabold px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded-md">
+                          Đồng bộ
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
+                        Dùng kết hợp và đồng bộ trực tiếp với trình soạn thảo trên nền Web.
+                      </p>
                     </div>
-                  </div>
-                  <div className="p-2">
-                    <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-2xl transition-colors font-bold text-sm">
-                      <LogOut size={18} /> Đăng xuất
-                    </button>
-                  </div>
-               </div>
-             )}
-           </div>
+                  </a>
+
+                  {/* Tùy chọn 2: Dùng trực tiếp trên khung chat Gemini */}
+                  <a 
+                    href="https://drive.google.com/file/d/1kKihOm-I4FYuMhNbWfjchUAT4MnoAjIA/view?usp=drive_link"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowExtensionMenu(false)}
+                    className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-indigo-50/70 transition-all border border-transparent hover:border-indigo-100 group cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-indigo-600 group-hover:text-white transition-colors shadow-2xs text-sm">
+                      ✨
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">
+                          Bản trực tiếp trên Gemini
+                        </span>
+                        <span className="text-[9px] font-extrabold px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-md">
+                          Gemini Chat
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
+                        Tích hợp và chạy trực tiếp ngay trên khung chat Gemini để tối ưu công thức toán.
+                      </p>
+                    </div>
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-3 px-4 py-1.5 bg-gradient-to-r from-amber-50 to-amber-100/30 text-amber-800 border border-amber-200 hover:border-amber-300 rounded-xl shadow-2xs transition-colors duration-200 select-none">
+            <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-500 rounded-lg flex items-center justify-center shadow-xs">
+               <Zap className="text-white" size={15} fill="white" />
+            </div>
+            <div>
+               <p className="text-[8px] font-black text-amber-600 tracking-wider uppercase leading-none">Số dư</p>
+               <p className="text-sm font-black text-amber-950 mt-1 leading-none">{credits ?? 0} Credits</p>
+            </div>
+          </div>
+
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 hover:bg-white transition-all shadow-3xs cursor-pointer">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white shadow-xs transition-all duration-200 ${user.isGuest ? 'bg-gradient-to-br from-orange-400 to-orange-500' : 'bg-gradient-to-br from-indigo-550 to-indigo-600'}`}>
+                {user.isGuest ? <Monitor size={16} /> : (user.email?.[0].toUpperCase() || 'U')}
+              </div>
+              <ChevronDown size={14} className={`text-slate-400 mr-1 transition-transform duration-200 ${showProfileMenu ? 'rotate-180' : ''}`} />
+            </button>
+            
+            {showProfileMenu && (
+              <div className="absolute right-0 top-full mt-3 w-72 bg-white rounded-[28px] shadow-2xl border border-slate-100 overflow-hidden z-50 animate-in zoom-in-95 duration-200">
+                 <div className="p-6 bg-indigo-50/50 border-b border-indigo-100">
+                   <div className="flex items-center gap-3 mb-4">
+                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-lg ${user.isGuest ? 'bg-orange-500' : 'bg-indigo-600'}`}>
+                       {user.isGuest ? <Fingerprint size={24} /> : (user.email?.[0].toUpperCase() || 'U')}
+                     </div>
+                     <div className="overflow-hidden">
+                       <h4 className="font-bold text-slate-900 truncate">{user.isGuest ? "Người dùng Khách" : "Thành viên Pro"}</h4>
+                       <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider flex items-center gap-1"><ShieldCheck size={10}/> Đã xác thực</p>
+                     </div>
+                   </div>
+                   <div className="space-y-2">
+                      <div className="flex flex-col gap-1">
+                         <label className="text-[10px] font-black text-slate-400 uppercase ml-1">ID Tài khoản</label>
+                         <div onClick={() => { navigator.clipboard.writeText(user.uid); setToast({ message: "Đã copy ID", type: 'success' }); }} className="flex items-center justify-between gap-2 text-slate-600 text-[11px] font-mono bg-white p-2 rounded-xl border border-indigo-50 cursor-pointer hover:bg-indigo-100/50 transition-colors">
+                           <span className="truncate">{user.uid}</span>
+                           <CopyIcon size={12} className="text-slate-400" />
+                         </div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                         <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Email</label>
+                         <div className="flex items-center gap-2 text-slate-500 text-xs bg-white/80 p-2 rounded-xl border border-indigo-50">
+                           <Mail size={12}/> <span className="truncate">{user?.displayEmail}</span>
+                         </div>
+                      </div>
+                   </div>
+                 </div>
+                 <div className="p-2">
+                   <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-2xl transition-colors font-bold text-sm">
+                     <LogOut size={18} /> Đăng xuất
+                   </button>
+                 </div>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -1189,10 +1222,8 @@ export default function App() {
              if (await deductCredit()) {
                 const clone = previewEl.cloneNode(true) as HTMLElement;
                 
-                // 1. Dọn dẹp: Xóa phần KaTeX HTML thừa
                 clone.querySelectorAll('.katex-html').forEach(el => el.remove());
                 
-                // 2. Tối ưu MathML cho Word: Phân biệt inline và block
                 clone.querySelectorAll('.katex-mathml').forEach(el => {
                   const isBlock = el.closest('.katex-display') !== null;
                   const style = (el as HTMLElement).style;
@@ -1207,12 +1238,10 @@ export default function App() {
                   }
                 });
 
-                // 3. Xóa các class Tailwind hiệu năng cao bằng cách chỉ nhắm mục tiêu phần tử có class
                 clone.querySelectorAll('[class]').forEach(el => {
                     el.removeAttribute('class');
                 });
                 
-                // Word ưu tiên thuộc tính style trực tiếp
                 clone.querySelectorAll('table').forEach(el => {
                     const tableEl = el as HTMLElement;
                     tableEl.style.borderCollapse = 'collapse';
@@ -1275,16 +1304,13 @@ export default function App() {
           const previewEl = document.getElementById('markdown-preview-content');
           if (!previewEl) return;
           try {
-             // 1. Chuyển trạng thái sang Đang định dạng
              setWordExportState('preparing');
              
              if (await deductCredit()) {
-                // Tăng nhẹ thời gian chờ để người dùng cảm thấy có tiến trình xử lý thực sự
                 await new Promise(resolve => setTimeout(resolve, 800));
 
                 const clone = previewEl.cloneNode(true) as HTMLElement;
                 
-                // Dọn dẹp MathJax/KaTeX
                 clone.querySelectorAll('.katex-html').forEach(el => el.remove());
                 clone.querySelectorAll('.katex-mathml').forEach(el => {
                    const isBlock = el.closest('.katex-display') !== null;
@@ -1300,7 +1326,6 @@ export default function App() {
                    }
                 });
 
-                // Xóa Tailwind classes
                 clone.querySelectorAll('[class]').forEach(el => {
                     el.removeAttribute('class');
                 });
@@ -1332,7 +1357,6 @@ export default function App() {
                   </html>
                 `;
 
-                // 2. Chuyển sang đóng gói dữ liệu
                 setWordExportState('packaging');
                 await new Promise(resolve => setTimeout(resolve, 900));
 
@@ -1346,7 +1370,6 @@ export default function App() {
                 link.click();
                 document.body.removeChild(link);
                 
-                // Cho trình duyệt thời gian đẩy tệp thực sự lên đĩa/hiển thị thanh công cụ tải xuống
                 setTimeout(() => {
                    URL.revokeObjectURL(url);
                    setWordExportState('success');
@@ -1364,7 +1387,6 @@ export default function App() {
           setContent('');
           setPreviewContent('');
         }}
-        
       />
 
       <main className="flex-1 flex overflow-hidden">
@@ -1378,7 +1400,6 @@ export default function App() {
                setContent(formatted);
                setPreviewContent(formatted);
             }}
-            // TỰ ĐỘNG DỊCH LATEX KHI DÁN KỂ CẢ TỪ AI (KHÔNG TỐN CREDIT)
             onPaste={(e) => {
               const pastedData = e.clipboardData.getData('text');
               const aiAiMathRegex = /[∫√∞πΔ±≤≥≠≈×÷′\\]|\\\[|\\\(|\$\$/;
@@ -1394,7 +1415,6 @@ export default function App() {
           />
         </div>
         <div className={`flex flex-col flex-1 bg-white overflow-hidden transition-all ${activeTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
-           {/* Thanh công cụ zoom xem trước */}
            <div className="flex items-center justify-between px-6 py-2 bg-slate-50 border-b border-slate-200/60 no-print select-none shrink-0 animate-in fade-in duration-300">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
@@ -1445,7 +1465,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* Thanh Chân Trang Bản Quyền & Liên Hệ */}
       <footer className="bg-slate-950 text-slate-300 text-[11px] px-8 py-2 flex items-center justify-between no-print z-50 select-none border-t border-slate-900 shrink-0">
         <style>{`
           @keyframes glow-author {
@@ -1500,7 +1519,6 @@ export default function App() {
 
       {wordExportState !== 'idle' && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-305 select-none">
-          {/* Backdrop bọc mờ */}
           <div 
             className="absolute inset-0 bg-slate-950/85 backdrop-blur-md cursor-pointer transition-opacity" 
             onClick={() => {
@@ -1510,14 +1528,11 @@ export default function App() {
             }}
           />
           
-          {/* Card Popup */}
           <div className="relative bg-white max-w-[420px] w-full rounded-[30px] overflow-hidden shadow-2xl border border-slate-100 p-8 flex flex-col items-center text-center animate-in zoom-in-95 duration-300 z-10 transition-all">
-            {/* Vùng phát sáng thẩm mỹ góc trên */}
             <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-48 h-48 rounded-full blur-3xl -z-10 pointer-events-none transition-all duration-500 ${
               wordExportState === 'success' ? 'bg-gradient-to-b from-indigo-500/15 to-transparent' : 'bg-gradient-to-b from-sky-400/15 to-transparent'
             }`} />
 
-            {/* Nút X Góc Trên Bên Phải (Chỉ xuất hiện khi hoàn thành thành công) */}
             {wordExportState === 'success' && (
               <button
                 onClick={() => setWordExportState('idle')}
@@ -1528,7 +1543,6 @@ export default function App() {
               </button>
             )}
 
-            {/* Vòng quay / Biểu tượng trạng thái */}
             <div className="relative mb-6 mt-3">
               {wordExportState === 'preparing' && (
                 <div className="relative flex items-center justify-center">
@@ -1556,21 +1570,18 @@ export default function App() {
               )}
             </div>
 
-            {/* Tiêu đề Pop-up */}
             <h3 className="text-lg font-black text-slate-900 leading-tight mb-2 tracking-tight">
               {wordExportState === 'preparing' && "Đang Định Dạng... 📝"}
               {wordExportState === 'packaging' && "Đang Kết Xuất... ⚡"}
               {wordExportState === 'success' && "Kết Xuất Thành Công! 🎉"}
             </h3>
 
-            {/* Nội dung thông điệp ngắn gọn tạo cảm hứng */}
             <p className="text-slate-600 text-[13px] leading-relaxed mb-6 max-w-[340px] px-2 font-medium">
               {wordExportState === 'preparing' && "🚀 Đang thiết kế và định dạng file Word siêu chuẩn cho bạn..."}
               {wordExportState === 'packaging' && "⚡ Sắp xong rồi! Đang đóng gói dữ liệu chất lượng cao gửi tới bạn..."}
               {wordExportState === 'success' && "Tệp Word siêu chất lượng đã được định dạng chuẩn hóa hoàn hảo và đang trên đường tải xuống máy tính của bạn!"}
             </p>
 
-            {/* Các bước kết xuất động (Visual Checklist) */}
             <div className="w-full space-y-2 px-3 pb-4 mb-6 border-b border-slate-100 text-left text-xs font-semibold">
               <div className="flex items-center gap-3">
                 <span className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${
@@ -1605,7 +1616,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Hướng dẫn tải xuống (Chỉ hiển thị khi đã thành công) */}
             {wordExportState === 'success' ? (
               <>
                 <div className="w-full bg-indigo-50/50 rounded-2xl p-4 border border-indigo-100/40 text-left mb-6 flex gap-3.5 items-start">
@@ -1620,7 +1630,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Nút hành động */}
                 <button
                   onClick={() => setWordExportState('idle')}
                   className="w-full py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-extrabold text-sm rounded-2xl shadow-lg shadow-indigo-600/15 hover:shadow-indigo-600/25 transition-all duration-300 flex items-center justify-center gap-2 group cursor-pointer hover:scale-[1.01]"
@@ -1653,7 +1662,7 @@ export default function App() {
               
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Toàn bộ Security Rules mới (Đã sửa đổi công khai phần statistics):</span>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Toàn bộ Security Rules mới:</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -1662,37 +1671,27 @@ export default function App() {
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Kiểm tra quyền Admin
     function isAdmin() {
       return request.auth != null && (request.auth.token.email == "duyconghanh2017@gmail.com" || request.auth.token.email == "rongtiendatto@gmail.com");
     }
 
-    // Kiểm tra người dùng đã đăng nhập
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // --- CẤU HÌNH QUYỀN TRUY CẬP ---
-
-    // 1. Bộ sưu tập 'statistics' hoàn toàn công khai cho tất cả mọi người (đọc/ghi tự do không cần đăng nhập)
     match /statistics/{document=**} {
       allow read, write: if true;
     }
 
-    // 2. Sử dụng wildcard động cho tất cả bộ sưu tập còn lại để hỗ trợ tên tiếng Việt có dấu trong Firestore Security Rules
     match /{collectionName}/{docId} {
-      
-      // Bộ sưu tập 'users' & 'người dùng': Cho phép chủ sở hữu (uid chính là docId) hoặc Admin truy cập
       allow read, write: if (collectionName == "users" || collectionName == "người dùng")
                           && (isAdmin() || (isSignedIn() && request.auth.uid == docId));
       allow list: if (collectionName == "users" || collectionName == "người dùng") && isAdmin();
       
-      // Bộ sưu tập 'guests' & 'khách': Cho phép bất kỳ người dùng đã đăng nhập (vì docId là fingerprint thiết bị) hoặc Admin truy cập
       allow read, write: if (collectionName == "guests" || collectionName == "khách")
                           && (isAdmin() || isSignedIn());
       allow list: if (collectionName == "guests" || collectionName == "khách") && isAdmin();
       
-      // Bộ sưu tập 'devices' & 'thiết bị': Cho phép bất kỳ người dùng đã đăng nhập (vì docId là fingerprint thiết bị) hoặc Admin truy cập
       allow read, write: if (collectionName == "devices" || collectionName == "thiết bị") && isSignedIn();
       allow list: if (collectionName == "devices" || collectionName == "thiết bị") && isAdmin();
     }
@@ -1825,7 +1824,6 @@ service cloud.firestore {
           </div>
         </div>
       )}
-
 
     </div>
   );
