@@ -250,41 +250,6 @@ const formatAiPastedContent = (text: string): string => {
   return formattedLines.join('\n');
 };
 
-/**
- * Chuẩn hóa khoảng trắng trong clone HTML để dán sang MS Word không bị mất spaces hoặc bị trùng lặp khoảng trắng
- */
-const normalizeSpacesInClone = (root: HTMLElement) => {
-  // 1. Thu nhỏ các khoảng trắng liên tiếp trong tất cả các nút văn bản (text nodes)
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let node;
-  while ((node = walker.nextNode())) {
-    if (node.nodeValue) {
-      node.nodeValue = node.nodeValue.replace(/[^\S\r\n]{2,}/g, ' ');
-    }
-  }
-
-  // 2. Chuyển đổi các khoảng trắng bình thường ở ngay cạnh công thức toán học (.katex) sang khoảng trắng không ngắt (\u00A0)
-  // Việc này bảo vệ khoảng trắng không bị MS Word tự động trim khi dán (copy-paste) hoặc mở file Word HTML (export)
-  root.querySelectorAll('.katex').forEach(el => {
-    const prev = el.previousSibling;
-    if (prev && prev.nodeType === Node.TEXT_NODE) {
-      const txt = prev.nodeValue || '';
-      if (txt.endsWith(' ')) {
-        // Thay ký tự khoảng trắng cuối cùng bằng khoảng trắng cứng
-        prev.nodeValue = txt.slice(0, -1) + '\u00A0';
-      }
-    }
-    const next = el.nextSibling;
-    if (next && next.nodeType === Node.TEXT_NODE) {
-      const txt = next.nodeValue || '';
-      if (txt.startsWith(' ')) {
-        // Thay ký tự khoảng trắng đầu tiên bằng khoảng trắng cứng
-        next.nodeValue = '\u00A0' + txt.slice(1);
-      }
-    }
-  });
-};
-
 let visitLogged = false;
 
 export default function App() {
@@ -903,7 +868,7 @@ export default function App() {
     <div className="h-screen flex flex-col items-center justify-center bg-slate-50">
       <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
       <span className="text-slate-500 font-medium font-mono text-xs uppercase tracking-widest">Đang kiểm tra bảo mật...</span>
-    </div>
+    </div> 
   );
 
   if (!user) return (
@@ -1154,7 +1119,7 @@ export default function App() {
                 <p className="text-xs font-black text-violet-950 mt-1 leading-none">Cài Extension</p>
              </div>
            </a>
-
+          
            <div className="flex items-center gap-3 px-4 py-1.5 bg-gradient-to-r from-amber-50 to-amber-100/30 text-amber-800 border border-amber-200 hover:border-amber-300 rounded-xl shadow-2xs transition-colors duration-200 select-none">
              <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-500 rounded-lg flex items-center justify-center shadow-xs">
                 <Zap className="text-white" size={15} fill="white" />
@@ -1224,14 +1189,8 @@ export default function App() {
              if (await deductCredit()) {
                 const clone = previewEl.cloneNode(true) as HTMLElement;
                 
-                // Xóa các thẻ tàng hình chống sao chép bằng tiện ích trước khi dọn dẹp các thẻ khác
-                clone.querySelectorAll('.copy-protection-decoy').forEach(el => el.remove());
-                
                 // 1. Dọn dẹp: Xóa phần KaTeX HTML thừa
                 clone.querySelectorAll('.katex-html').forEach(el => el.remove());
-                
-                // Sửa lỗi dính chữ và khoảng trắng trùng lặp trước/sau khi dọn dẹp KaTeX HTML
-                normalizeSpacesInClone(clone);
                 
                 // 2. Tối ưu MathML cho Word: Phân biệt inline và block
                 clone.querySelectorAll('.katex-mathml').forEach(el => {
@@ -1325,14 +1284,8 @@ export default function App() {
 
                 const clone = previewEl.cloneNode(true) as HTMLElement;
                 
-                // Xóa các thẻ tàng hình chống sao chép bằng tiện ích trước khi dọn dẹp các thẻ khác
-                clone.querySelectorAll('.copy-protection-decoy').forEach(el => el.remove());
-                
                 // Dọn dẹp MathJax/KaTeX
                 clone.querySelectorAll('.katex-html').forEach(el => el.remove());
-                
-                // Sửa lỗi dính chữ và khoảng trắng trùng lặp trước/sau khi dọn dẹp KaTeX HTML
-                normalizeSpacesInClone(clone);
                 clone.querySelectorAll('.katex-mathml').forEach(el => {
                    const isBlock = el.closest('.katex-display') !== null;
                    const style = (el as HTMLElement).style;
@@ -1687,7 +1640,7 @@ export default function App() {
       <DrawingModal isOpen={isDrawingModalOpen} onClose={() => setIsDrawingModalOpen(false)} onSubmit={handleDrawingSubmit} isProcessing={isAiProcessing} />
 
       {showPermissionError && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="bg-white max-w-2xl w-full rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="bg-amber-50 p-8 flex items-center gap-4 border-b border-amber-100">
               <Lock size={32} className="text-amber-600 animate-pulse" />
@@ -1817,7 +1770,7 @@ service cloud.firestore {
       )}
 
       {showConfigError && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="bg-white max-w-2xl w-full rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="bg-red-50 p-8 flex items-center gap-4 border-b border-red-100">
               <ShieldAlert size={32} className="text-red-600 animate-pulse" />
@@ -1863,7 +1816,7 @@ service cloud.firestore {
       )}
 
       {showCreditAlert && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="bg-white max-sm w-full rounded-[32px] p-10 text-center shadow-2xl">
             <AlertTriangle className="text-red-500 mx-auto mb-6" size={40} />
             <h3 className="text-2xl font-black text-slate-900 mb-2">Hết lượt sử dụng</h3>
