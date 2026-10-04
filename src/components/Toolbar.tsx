@@ -11,10 +11,8 @@ import {
   Copy,
   FileDown,
   Trash2,
-  Puzzle,
-  Sparkles
+  Puzzle
 } from 'lucide-react';
-import { WordGuideModal } from './WordGuideModal';
 
 interface ToolbarProps {
   onInsert: (textBefore: string, textAfter?: string) => void;
@@ -35,16 +33,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onExportWord,
   onClear
 }) => {
-  const [showWordGuide, setShowWordGuide] = React.useState(false);
-
   const triggerFileInput = () => {
     fileInputRef.current?.click();
   };
 
   return (
-    <>
-      <WordGuideModal isOpen={showWordGuide} onClose={() => setShowWordGuide(false)} />
-      <div className="flex items-center justify-between px-6 py-2.5 bg-white border-b border-slate-200/80 shadow-sm sticky top-0 z-10 no-print select-none">
+    <div className="flex items-center justify-between px-6 py-2.5 bg-white border-b border-slate-200/80 shadow-sm sticky top-0 z-10 no-print select-none">
       <div className="flex items-center gap-0">
         {/* Nhóm Cột 1: TỆP */}
         <div className="flex flex-col items-center px-6 border-r border-slate-200">
@@ -137,16 +131,6 @@ className="flex items-center shrink-0 gap-1.5 px-3 py-1.5 text-[11px] font-extra
 
         <button
           type="button"
-          onClick={() => setShowWordGuide(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100/80 border border-amber-200/80 rounded-xl transition-all cursor-pointer active:scale-95 shadow-2xs"
-          title="Xem cách ép Word tự động chuyển sang công thức chuẩn 2D"
-        >
-          <Sparkles size={14} className="text-amber-600" />
-          <span className="hidden sm:inline">Mẹo Word</span>
-        </button>
-
-        <button
-          type="button"
           onClick={onCopyFormatted}
           className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition-all cursor-pointer active:scale-95"
           title="Sao chép chuẩn Word"
@@ -157,7 +141,7 @@ className="flex items-center shrink-0 gap-1.5 px-3 py-1.5 text-[11px] font-extra
           type="button"
           onClick={onExportWord}
           className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition-all cursor-pointer active:scale-95"
-          title="Tải file Word (.docx)"
+          title="Tải file Word (.doc)"
         >
           <FileDown size={19} className="stroke-[2.0]" />
         </button>
@@ -171,6 +155,5 @@ className="flex items-center shrink-0 gap-1.5 px-3 py-1.5 text-[11px] font-extra
         </button>
       </div>
     </div>
-    </>
   );
 };
